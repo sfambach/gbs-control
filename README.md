@@ -1,3 +1,12 @@
+# Minor Changes to gbs-control to fix build
+20260712 - Const added for async parameter 
+
+
+
+
+
+
+
 # gbs-control
 
 Documentation: https://ramapcsx2.github.io/gbs-control/
