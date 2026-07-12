@@ -1,5 +1,6 @@
 # Minor Changes to gbs-control to fix build
-20260712 - Const added for async parameter 
+
+* 20260712 - Const added for async parameter 
 
 
 
