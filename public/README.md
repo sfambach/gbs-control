@@ -11,10 +11,20 @@ Redesigned UI for the GBSControl with added features:
 
 ## Building
 
-- `npm install`
-- Make changes
-- `npm run build` to generate the necesary files webui_html.h
-- Compile & upload GBSControl project in Arduino IDE
+```bash
+npm install
+npm run build
+```
+
+The build pipeline:
+
+1. **`public/` sources** (`src/index.html.tpl`, `src/index.js`, `src/style.css`, …) are bundled into
+2. **`webui.html`** at the repo root — intermediate artifact (gitignored)
+3. **`webui_html.h`** at the repo root — gzipped C array embedded by the firmware sketch
+
+Commit **`webui_html.h`** after UI changes. Do not commit `webui.html`.
+
+Then compile and upload the GBS-Control sketch (Arduino IDE or PlatformIO).
 
 ## Tips
 

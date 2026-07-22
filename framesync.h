@@ -1,21 +1,27 @@
 #ifndef FRAMESYNC_H_
 #define FRAMESYNC_H_
 
+#include "config.h"
+
 // fast digitalRead()
 #if defined(ESP8266)
-#define digitalRead(x) ((GPIO_REG_READ(GPIO_IN_ADDRESS) >> x) & 1)
-#ifndef DEBUG_IN_PIN
-#define DEBUG_IN_PIN D6
+#ifndef digitalRead
+#define digitalRead(x) GBS_FAST_DIGITAL_READ(x)
 #endif
-#else // Arduino
-// fastest, but non portable (Uno pin 11 = PB3, Mega2560 pin 11 = PB5)
-//#define digitalRead(x) bitRead(PINB, 3)
+#else // Arduino / ESP32
 #include "fastpin.h"
 #define digitalRead(x) fastRead<x>()
-// no define for DEBUG_IN_PIN
 #endif
 
+#if defined(ESP8266)
 #include <ESP8266WiFi.h>
+static inline void fs_wifi_light_sleep() { WiFi.setSleepMode(WIFI_LIGHT_SLEEP); }
+static inline void fs_wifi_no_sleep() { WiFi.setSleepMode(WIFI_NONE_SLEEP); }
+#elif defined(ESP32)
+#include <WiFi.h>
+static inline void fs_wifi_light_sleep() { WiFi.setSleep(true); }
+static inline void fs_wifi_no_sleep() { WiFi.setSleep(false); }
+#endif
 
 // FS_DEBUG:      full verbose debug over serial
 // FS_DEBUG_LED:  just blink LED (off = adjust phase, on = normal phase)
@@ -128,7 +134,7 @@ private:
             if (MeasurePeriod::armed) {
                 MeasurePeriod::armed = 0;
                 delay(7);
-                WiFi.setSleepMode(WIFI_LIGHT_SLEEP);
+                fs_wifi_light_sleep();
             }
             if (MeasurePeriod::stopTime > 0) {
                 break;
@@ -137,7 +143,7 @@ private:
         *start = MeasurePeriod::startTime;
         *stop = MeasurePeriod::stopTime;
         ESP.wdtEnable(0);
-        WiFi.setSleepMode(WIFI_NONE_SLEEP);
+        fs_wifi_no_sleep();
 
         if ((*start >= *stop) || *stop == 0 || *start == 0) {
             // ESP.getCycleCount() overflow oder no pulse, just fail this round
@@ -376,7 +382,7 @@ public:
             if (MeasurePeriod::armed) {
                 MeasurePeriod::armed = 0;
                 delay(7);
-                WiFi.setSleepMode(WIFI_LIGHT_SLEEP);
+                fs_wifi_light_sleep();
             }
             if (MeasurePeriod::stopTime > 0) {
                 break;
@@ -385,7 +391,7 @@ public:
         *start = MeasurePeriod::startTime;
         *stop = MeasurePeriod::stopTime;
         ESP.wdtEnable(0);
-        WiFi.setSleepMode(WIFI_NONE_SLEEP);
+        fs_wifi_no_sleep();
 
         if ((*start >= *stop) || *stop == 0 || *start == 0) {
             // ESP.getCycleCount() overflow oder no pulse, just fail this round

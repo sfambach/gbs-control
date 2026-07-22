@@ -1,3 +1,4 @@
+#include "config.h"
 #include "ntsc_240p.h"
 #include "pal_240p.h"
 #include "ntsc_720x480.h"
@@ -23,17 +24,13 @@
 #include "SSD1306Wire.h"
 #include "images.h"
 
-#define HAVE_BUTTONS 0
-#define USE_NEW_OLED_MENU 1
-
-
 static inline void writeBytes(uint8_t slaveRegister, uint8_t *values, uint8_t numValues);
 const uint8_t *loadPresetFromSPIFFS(byte forVideoMode);
 
-SSD1306Wire display(0x3c, D2, D1); //inits I2C address & pins for OLED
-const int pin_clk = 14;            //D5 = GPIO14 (input of one direction for encoder)
-const int pin_data = 13;           //D7 = GPIO13	(input of one direction for encoder)
-const int pin_switch = 0;          //D3 = GPIO0 pulled HIGH, else boot fail (middle push button for encoder)
+SSD1306Wire display(GBS_OLED_I2C_ADDR, GBS_OLED_PIN_SDA, GBS_OLED_PIN_SCL);
+const int pin_clk = GBS_PIN_ENCODER_CLK;
+const int pin_data = GBS_PIN_ENCODER_DATA;
+const int pin_switch = GBS_PIN_ENCODER_SWITCH;
 
 
 #if USE_NEW_OLED_MENU
@@ -60,41 +57,74 @@ volatile int oled_main_pointer = 0; // volatile vars change done with ISR
 volatile int oled_pointer_count = 0;
 volatile int oled_sub_pointer = 0;
 #endif
+// ESP32Async: ESPAsyncTCP (ESP8266) / AsyncTCP (ESP32) + ESPAsyncWebServer — see docs/LIBRARIES.md
+// https://github.com/ESP32Async/ESPAsyncTCP
+// https://github.com/ESP32Async/AsyncTCP
+// https://github.com/ESP32Async/ESPAsyncWebServer
+#if defined(ESP8266)
 #include <ESP8266WiFi.h>
-// ESPAsyncTCP and ESPAsyncWebServer libraries by me-no-dev
-// download (green "Clone or download" button) and extract to Arduino libraries folder
-// Windows: "Documents\Arduino\libraries" or full path: "C:\Users\rama\Documents\Arduino\libraries"
-// https://github.com/me-no-dev/ESPAsyncTCP
-// https://github.com/me-no-dev/ESPAsyncWebServer
 #include <ESPAsyncTCP.h>
+#elif defined(ESP32)
+#include <WiFi.h>
+#include <AsyncTCP.h>
+#endif
 #include <ESPAsyncWebServer.h>
 #include "FS.h"
 #include <DNSServer.h>
 #include <WiFiUdp.h>
-#include <ESP8266mDNS.h> // mDNS library for finding gbscontrol.local on the local network
 #include <ArduinoOTA.h>
+#if defined(ESP8266)
+#include <ESP8266mDNS.h>
+#elif defined(ESP32)
+#include <ESPmDNS.h>
+#endif
 
-// PersWiFiManager library by Ryan Downing
-// https://github.com/r-downing/PersWiFiManager
-// included in project root folder to allow modifications within limitations of the Arduino framework
-// See 3rdparty/PersWiFiManager for unmodified source and license
-#include "PersWiFiManager.h"
+#if defined(ESP8266)
+static inline void gbs_wifi_set_hostname(const char *name) { WiFi.hostname(name); }
+static inline void gbs_wifi_disable_sleep() { WiFi.setSleepMode(WIFI_NONE_SLEEP); }
+static inline void gbs_wifi_set_output_power(float dbm) { WiFi.setOutputPower(dbm); }
+static inline void gbs_wifi_force_off() { WiFi.mode(WIFI_OFF); WiFi.forceSleepBegin(); }
+static inline void gbs_mdns_update() { MDNS.update(); }
+static inline bool gbs_mdns_begin(const char *host)
+{
+    return MDNS.begin(host, WiFi.localIP());
+}
+static inline void gbs_mdns_add_http_service()
+{
+    MDNS.addService("http", "tcp", 80);
+    MDNS.announce();
+}
+#elif defined(ESP32)
+static inline void gbs_wifi_set_hostname(const char *name) { WiFi.setHostname(name); }
+static inline void gbs_wifi_disable_sleep() { WiFi.setSleep(false); }
+static inline void gbs_wifi_set_output_power(float dbm)
+{
+    (void)dbm;
+    WiFi.setTxPower(WIFI_POWER_17dBm);
+}
+static inline void gbs_wifi_force_off() { WiFi.mode(WIFI_OFF); }
+static inline void gbs_mdns_update() {}
+static inline bool gbs_mdns_begin(const char *host) { return MDNS.begin(host); }
+static inline void gbs_mdns_add_http_service() { MDNS.addService("http", "tcp", 80); }
+#endif
+
+// AsyncPersWiFiManager — https://github.com/sfambach/AsyncPersWiFiManager
+// Submodule reference: 3rdparty/AsyncPersWiFiManager — see docs/LIBRARIES.md
+#include <PersWiFiManager.h>
 
 // WebSockets library by Markus Sattler
 // https://github.com/Links2004/arduinoWebSockets
-// included in src folder to allow header modifications within limitations of the Arduino framework
-// See 3rdparty/WebSockets for unmodified source and license
+// Modified copy in src/; upstream reference: 3rdparty/WebSockets (git submodule)
+// See docs/LIBRARIES.md for PlatformIO / Arduino IDE setup
 #include "src/WebSockets.h"
 #include "src/WebSocketsServer.h"
 
 // Optional:
-// ESP8266-ping library to aid debugging WiFi issues, install via Arduino library manager
+// ESPping library (ESP8266 + ESP32) — optional WiFi debug; see docs/LIBRARIES.md
 //#define HAVE_PINGER_LIBRARY
 #ifdef HAVE_PINGER_LIBRARY
-#include <Pinger.h>
-#include <PingerResponse.h>
+#include <ESPping.h>
 unsigned long pingLastTime;
-Pinger pinger; // pinger global object to aid debugging WiFi issues
 #endif
 
 typedef TV5725<GBS_ADDR> GBS;
@@ -103,56 +133,28 @@ static unsigned long lastVsyncLock = millis();
 
 // Si5351mcu library by Pavel Milanes
 // https://github.com/pavelmc/Si5351mcu
-// included in project root folder to allow modifications within limitations of the Arduino framework
-// See 3rdparty/Si5351mcu for unmodified source and license
+// Modified copy in src/ — see src/si5351mcu.md and docs/LIBRARIES.md
 #include "src/si5351mcu.h"
 Si5351mcu Si;
 
-#define THIS_DEVICE_MASTER
-#ifdef THIS_DEVICE_MASTER
-const char *ap_ssid = "gbscontrol";
-const char *ap_password = "qqqqqqqq";
-// change device_hostname_full and device_hostname_partial to rename the device
-// (allows 2 or more on the same network)
-// new: only use _partial throughout, comply to standards
-const char *device_hostname_full = "gbscontrol.local";
-const char *device_hostname_partial = "gbscontrol"; // for MDNS
-//
-static const char ap_info_string[] PROGMEM =
-    "(WiFi): AP mode (SSID: gbscontrol, pass 'qqqqqqqq'): Access 'gbscontrol.local' in your browser";
-static const char st_info_string[] PROGMEM =
-    "(WiFi): Access 'http://gbscontrol:80' or 'http://gbscontrol.local' (or device IP) in your browser";
-#else
-const char *ap_ssid = "gbsslave";
-const char *ap_password = "qqqqqqqq";
-const char *device_hostname_full = "gbsslave.local";
-const char *device_hostname_partial = "gbsslave"; // for MDNS
-//
-static const char ap_info_string[] PROGMEM =
-    "(WiFi): AP mode (SSID: gbsslave, pass 'qqqqqqqq'): Access 'gbsslave.local' in your browser";
-static const char st_info_string[] PROGMEM =
-    "(WiFi): Access 'http://gbsslave:80' or 'http://gbsslave.local' (or device IP) in your browser";
-#endif
+const char *ap_ssid = GBS_WIFI_AP_SSID;
+const char *ap_password = GBS_WIFI_AP_PASSWORD;
+const char *device_hostname_full = GBS_DEVICE_HOSTNAME_FULL;
+const char *device_hostname_partial = GBS_DEVICE_HOSTNAME;
+static const char ap_info_string[] PROGMEM = GBS_WIFI_AP_INFO;
+static const char st_info_string[] PROGMEM = GBS_WIFI_STA_INFO;
 
-AsyncWebServer server(80);
+AsyncWebServer server(GBS_WEB_SERVER_PORT);
 DNSServer dnsServer;
-WebSocketsServer webSocket(81);
+WebSocketsServer webSocket(GBS_WEBSOCKET_PORT);
 //AsyncWebSocket webSocket("/ws");
 PersWiFiManager persWM(server, dnsServer);
 
-#define DEBUG_IN_PIN D6 // marked "D12/MISO/D6" (Wemos D1) or D6 (Lolin NodeMCU)
-// SCL = D1 (Lolin), D15 (Wemos D1) // ESP8266 Arduino default map: SCL
-// SDA = D2 (Lolin), D14 (Wemos D1) // ESP8266 Arduino default map: SDA
-#define LEDON                     \
-    pinMode(LED_BUILTIN, OUTPUT); \
-    digitalWrite(LED_BUILTIN, LOW)
-#define LEDOFF                       \
-    digitalWrite(LED_BUILTIN, HIGH); \
-    pinMode(LED_BUILTIN, INPUT)
-
-// fast ESP8266 digitalRead (21 cycles vs 77), *should* work with all possible input pins
-// but only "D7" and "D6" have been tested so far
-#define digitalRead(x) ((GPIO_REG_READ(GPIO_IN_ADDRESS) >> x) & 1)
+#define LEDON GBS_LED_ON
+#define LEDOFF GBS_LED_OFF
+#if defined(ESP8266)
+#define digitalRead(x) GBS_FAST_DIGITAL_READ(x)
+#endif
 
 // feed the current measurement, get back the moving average
 uint8_t getMovingAverage(uint8_t item)
@@ -177,13 +179,13 @@ uint8_t getMovingAverage(uint8_t item)
 
 struct MenuAttrs
 {
-    static const int8_t shiftDelta = 4;
-    static const int8_t scaleDelta = 4;
-    static const int16_t vertShiftRange = 300;
-    static const int16_t horizShiftRange = 400;
-    static const int16_t vertScaleRange = 100;
-    static const int16_t horizScaleRange = 130;
-    static const int16_t barLength = 100;
+    static const int8_t shiftDelta = GBS_MENU_SHIFT_DELTA;
+    static const int8_t scaleDelta = GBS_MENU_SCALE_DELTA;
+    static const int16_t vertShiftRange = GBS_MENU_VERT_SHIFT_RANGE;
+    static const int16_t horizShiftRange = GBS_MENU_HORIZ_SHIFT_RANGE;
+    static const int16_t vertScaleRange = GBS_MENU_VERT_SCALE_RANGE;
+    static const int16_t horizScaleRange = GBS_MENU_HORIZ_SCALE_RANGE;
+    static const int16_t barLength = GBS_MENU_BAR_LENGTH;
 };
 typedef MenuManager<GBS, MenuAttrs> Menu;
 
@@ -283,10 +285,9 @@ SerialMirror SerialM;
 struct FrameSyncAttrs
 {
     static const uint8_t debugInPin = DEBUG_IN_PIN;
-    static const uint32_t lockInterval = 100 * 16.70; // every 100 frames
-    static const int16_t syncCorrection = 2;          // Sync correction in scanlines to apply when phase lags target
-    static const int32_t syncTargetPhase = 90;        // Target vsync phase offset (output trails input) in degrees
-                                                      // to debug: syncTargetPhase = 343 lockInterval = 15 * 16
+    static const uint32_t lockInterval = GBS_FRAMESYNC_LOCK_INTERVAL;
+    static const int16_t syncCorrection = GBS_FRAMESYNC_CORRECTION;
+    static const int32_t syncTargetPhase = GBS_FRAMESYNC_TARGET_PHASE;
 };
 typedef FrameSyncManager<GBS, FrameSyncAttrs> FrameSync;
 
@@ -3206,8 +3207,6 @@ uint32_t getPllRate()
     return retVal;
 }
 
-#define AUTO_GAIN_INIT 0x48
-
 void doPostPresetLoadSteps()
 {
     //unsigned long postLoadTimer = millis();
@@ -3665,7 +3664,7 @@ void doPostPresetLoadSteps()
     if (uopt->enableAutoGain == 1) {
         if (adco->r_gain == 0) {
             // SerialM.printf("ADC gain: reset %x := %x\n", GBS::ADC_RGCTRL::read(), AUTO_GAIN_INIT);
-            setAdcGain(AUTO_GAIN_INIT);
+            setAdcGain(GBS_AUTO_GAIN_INIT);
             GBS::DEC_TEST_ENABLE::write(1);
         } else {
             // SerialM.printf("ADC gain: transferred %x := %x\n", GBS::ADC_RGCTRL::read(), adco->r_gain);
@@ -7216,7 +7215,7 @@ void setup()
 
     // millis() at this point: typically 65ms
     // start web services as early in boot as possible
-    WiFi.hostname(device_hostname_partial); // was _full
+    gbs_wifi_set_hostname(device_hostname_partial); // was _full
 
     startWire();
     // run some dummy commands to init I2C to GBS and cached segments
@@ -7227,14 +7226,13 @@ void setup()
 
     if (rto->webServerEnabled) {
         rto->allowUpdatesOTA = false;       // need to initialize for handleWiFi()
-        WiFi.setSleepMode(WIFI_NONE_SLEEP); // low latency responses, less chance for missing packets
-        WiFi.setOutputPower(16.0f);         // float: min 0.0f, max 20.5f
+        gbs_wifi_disable_sleep(); // low latency responses, less chance for missing packets
+        gbs_wifi_set_output_power(16.0f);         // float: min 0.0f, max 20.5f on ESP8266
         startWebserver();
         rto->webServerStarted = true;
     } else {
         //WiFi.disconnect(); // deletes credentials
-        WiFi.mode(WIFI_OFF);
-        WiFi.forceSleepBegin();
+        gbs_wifi_force_off();
     }
 #ifdef HAVE_PINGER_LIBRARY
     pingLastTime = millis();
@@ -7540,11 +7538,11 @@ void setup()
 }
 
 #if HAVE_BUTTONS
-#define INPUT_SHIFT 0
-#define DOWN_SHIFT 1
-#define UP_SHIFT 2
-#define MENU_SHIFT 3
-#define BACK_SHIFT 4
+#define INPUT_SHIFT GBS_BUTTON_INPUT_SHIFT
+#define DOWN_SHIFT GBS_BUTTON_DOWN_SHIFT
+#define UP_SHIFT GBS_BUTTON_UP_SHIFT
+#define MENU_SHIFT GBS_BUTTON_MENU_SHIFT
+#define BACK_SHIFT GBS_BUTTON_BACK_SHIFT
 
 static const uint8_t historySize = 32;
 static const uint16_t buttonPollInterval = 100; // microseconds
@@ -7724,7 +7722,7 @@ void handleWiFi(boolean instant)
 {
     static unsigned long lastTimePing = millis();
     if (rto->webServerEnabled && rto->webServerStarted) {
-        MDNS.update();
+        gbs_mdns_update();
         persWM.handleWiFi(); // if connected, returns instantly. otherwise it reconnects or opens AP
         dnsServer.processNextRequest();
 
@@ -7960,7 +7958,7 @@ void loop()
                 SerialM.print(F("auto gain "));
                 if (uopt->enableAutoGain == 0) {
                     uopt->enableAutoGain = 1;
-                    setAdcGain(AUTO_GAIN_INIT);
+                    setAdcGain(GBS_AUTO_GAIN_INIT);
                     GBS::DEC_TEST_ENABLE::write(1);
                     SerialM.println("on");
                 } else {
@@ -8909,22 +8907,26 @@ void loop()
     }
 
 #ifdef HAVE_PINGER_LIBRARY
-    // periodic pings for debugging WiFi issues
+    // periodic pings for debugging WiFi issues (ESPping)
     if (WiFi.status() == WL_CONNECTED) {
         if (rto->enableDebugPings && millis() - pingLastTime > 1000) {
-            // regular interval pings
-            if (pinger.Ping(WiFi.gatewayIP(), 1, 750) == false) {
-                Serial.println("Error during last ping command.");
+            if (Ping.ping(WiFi.gatewayIP(), 1)) {
+                Serial.printf(
+                    "Reply from %s: time=%.0fms\n",
+                    WiFi.gatewayIP().toString().c_str(),
+                    Ping.averageTime());
+                pingLastTime = millis() - 900; // produce a fast stream of pings if connection is good
+            } else {
+                Serial.printf("Request timed out.\n");
+                pingLastTime = millis();
             }
-            pingLastTime = millis();
         }
     }
 #endif
 }
 
-#if defined(ESP8266)
 #include "webui_html.h"
-// gzip -c9 webui.html > webui_html && xxd -i webui_html > webui_html.h && rm webui_html && sed -i -e 's/unsigned char webui_html\[]/const uint8_t webui_html[] PROGMEM/' webui_html.h && sed -i -e 's/unsigned int webui_html_len/const unsigned int webui_html_len/' webui_html.h
+// Regenerate: cd public && npm run build  (see public/README.md)
 
 void handleType2Command(char argument)
 {
@@ -9277,7 +9279,7 @@ void handleType2Command(char argument)
             // restart to attempt wifi station mode connect
             delay(30);
             WiFi.mode(WIFI_STA);
-            WiFi.hostname(device_hostname_partial); // _full
+            gbs_wifi_set_hostname(device_hostname_partial); // _full
             delay(30);
             ESP.reset();
             break;
@@ -9502,18 +9504,21 @@ void handleType2Command(char argument)
 //  }
 //}
 
+#if defined(ESP8266)
 WiFiEventHandler disconnectedEventHandler;
+#endif
 
 void startWebserver()
 {
     persWM.setApCredentials(ap_ssid, ap_password);
+    persWM.setStaHostname(device_hostname_partial);
+    persWM.setConnectTimeout(GBS_WIFI_CONNECT_TIMEOUT_SEC);
     persWM.onConnect([]() {
         SerialM.print(F("(WiFi): STA mode connected; IP: "));
         SerialM.println(WiFi.localIP().toString());
-        if (MDNS.begin(device_hostname_partial, WiFi.localIP())) { // MDNS request for gbscontrol.local
+        if (gbs_mdns_begin(device_hostname_partial)) { // MDNS request for gbscontrol.local
             //Serial.println("MDNS started");
-            MDNS.addService("http", "tcp", 80); // Add service to MDNS-SD
-            MDNS.announce();
+            gbs_mdns_add_http_service();
         }
         SerialM.println(FPSTR(st_info_string));
     });
@@ -9522,10 +9527,19 @@ void startWebserver()
         // add mdns announce here as well?
     });
 
+#if defined(ESP8266)
     disconnectedEventHandler = WiFi.onStationModeDisconnected([](const WiFiEventStationModeDisconnected &event) {
         Serial.print("Station disconnected, reason: ");
         Serial.println(event.reason);
     });
+#elif defined(ESP32)
+    WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info) {
+        if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
+            Serial.print("Station disconnected, reason: ");
+            Serial.println(info.wifi_sta_disconnected.reason);
+        }
+    }, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
+#endif
 
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
         //Serial.println("sending web page");
@@ -9893,31 +9907,6 @@ void startWebserver()
     server.begin();    // Webserver for the site
     webSocket.begin(); // Websocket for interaction
     yield();
-
-#ifdef HAVE_PINGER_LIBRARY
-    // pinger library
-    pinger.OnReceive([](const PingerResponse &response) {
-        if (response.ReceivedResponse) {
-            Serial.printf(
-                "Reply from %s: time=%lums\n",
-                response.DestIPAddress.toString().c_str(),
-                response.ResponseTime);
-
-            pingLastTime = millis() - 900; // produce a fast stream of pings if connection is good
-        } else {
-            Serial.printf("Request timed out.\n");
-        }
-
-        // Return true to continue the ping sequence.
-        // If current event returns false, the ping sequence is interrupted.
-        return true;
-    });
-
-    pinger.OnEnd([](const PingerResponse &response) {
-        // detailed info not necessary
-        return true;
-    });
-#endif
 }
 
 void initUpdateOTA()
@@ -10195,8 +10184,6 @@ void saveUserPrefs()
 
     f.close();
 }
-
-#endif
 
 #if !USE_NEW_OLED_MENU
 //OLED Functionality
