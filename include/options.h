@@ -1,4 +1,5 @@
 #ifndef _USER_H_
+#define _USER_H_
 using Ascii8 = uint8_t;
 /// Output resolution requested by user, *given to* applyPresets().
 enum PresetPreference : uint8_t {
@@ -103,4 +104,4 @@ struct adcOptions
     uint8_t g_off;
     uint8_t b_off;
 };
-#endif
+#endif // _USER_H_

@@ -48,12 +48,12 @@ extern Si5351mcu Si;
 
 extern char serialCommand;
 extern char userCommand;
+extern String slotIndexMap;
+extern unsigned long lastVsyncLock;
 
-#if GBS_ENABLE_WEB_GUI && defined(ESP8266)
-class SerialMirror;
-extern SerialMirror SerialM;
-#else
-#define SerialM Serial
-#endif
+#define LEDON GBS_LED_ON
+#define LEDOFF GBS_LED_OFF
+
+#include "gbs_serial.h"
 
 void myLog(char const *type, char command);

@@ -633,3 +633,4 @@ void subpointerfunction()
         oled_pointer_count = 7;
     }
 }
+#endif

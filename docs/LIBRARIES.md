@@ -28,7 +28,7 @@ build_flags =
 
 On **ESP32**, frame-sync measurement on `GBS_DEBUG_IN_PIN` uses the **PCNT** hardware glitch filter ([`platform_gbs.h`](../platform_gbs.h)). Pulse timing uses the CPU cycle counter on Xtensa ESP32 (classic, S2, S3) and microseconds on RISC-V ESP32 (C3, C6, H2).
 
-PlatformIO environments: `d1_mini` (ESP8266), `esp32dev`, `esp32-s3-devkitc-1`, `esp32-c3-devkitm-1`, `esp32-c6-devkitc-1` — see [`platformio.ini`](../platformio.ini).
+PlatformIO environment for ESP8266: **`espressif8266@4.2.1`** (required for ESPAsyncWebServer 3.x — older 2.6.x causes lwIP enum conflicts).
 
 ## Quick reference
 

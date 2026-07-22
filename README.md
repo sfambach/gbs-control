@@ -34,6 +34,8 @@ Hardware pins, feature toggles (`GBS_ENABLE_OLED`, `GBS_ENABLE_WEB_GUI`, `GBS_EN
 
 ## Building
 
+**Local build (step-by-step):** **[docs/BUILD.md](docs/BUILD.md)** — Windows `build.ps1`, PlatformIO, Makefile.
+
 Third-party libraries, submodule setup, **PlatformIO**, and **Arduino IDE** instructions are documented in **[docs/LIBRARIES.md](docs/LIBRARIES.md)**.
 
 Clone with submodules (pinned reference copies under `3rdparty/` — AsyncPersWiFiManager, WebSockets, ESP32Async stack, ESPping, SSD1306):
@@ -46,16 +48,11 @@ git submodule update --init --recursive
 
 PlatformIO builds still download libraries via `lib_deps`; submodules are for version pinning and offline diff. See **[docs/LIBRARIES.md](docs/LIBRARIES.md)**.
 
-**PlatformIO:** `pio run -e d1_mini` (ESP8266) · `pio run -e esp32dev` (ESP32 library target, firmware port in progress)
+**PlatformIO:** `pio run -e d1_mini` (ESP8266) · `py -3 -m platformio run -e d1_mini` if `pio` is not on PATH
 
-Or use the root **Makefile** (requires `make`, `pio`, and npm):
+**Windows:** `.\build.ps1` — see **[docs/BUILD.md](docs/BUILD.md)**
 
-```bash
-make                  # web UI + firmware (ESP8266 / d1_mini)
-make firmware-only    # skip web UI rebuild
-make upload BOARD=esp32dev
-make help
-```
+**Linux/macOS:** root **Makefile** — `make firmware-only` (requires `make`, `pio`)
 
 **CI / nightly builds:** GitHub Actions builds when firmware or web-UI sources change (pure doc edits are skipped). Nightly runs only after recent commits on `main`. Download `.bin` files from *Artifacts* in the [Actions tab](https://github.com/sfambach/gbs-control/actions). Manual rebuild: *Actions → Build → Run workflow*.
 

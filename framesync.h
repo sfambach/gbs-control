@@ -4,6 +4,13 @@
 #include "config.h"
 #include "platform_gbs.h"
 #include "measure_period.h"
+#include "include/options.h"
+#include "lib/si5351mcu.h"
+#include "gbs_serial.h"
+
+extern struct runTimeOptions *rto;
+extern Si5351mcu Si;
+void handleWiFi(boolean instant);
 
 // fast digitalRead()
 #if defined(ESP8266)
@@ -37,7 +44,7 @@ static inline void fs_wifi_no_sleep() { WiFi.setSleep(false); }
 #define fsDebugPrintf(...)
 #endif
 
-void setExternalClockGenFrequencySmooth(uint32_t freq) {
+static inline void setExternalClockGenFrequencySmooth(uint32_t freq) {
     uint32_t current = rto->freqExtClockGen;
 
     rto->freqExtClockGen = freq;

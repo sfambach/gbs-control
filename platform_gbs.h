@@ -3,6 +3,10 @@
 
 #include "config.h"
 
+#if defined(ESP8266) || defined(ESP32)
+#include <Arduino.h>
+#endif
+
 // ---------------------------------------------------------------------------
 // Compile-time platform detection (ESP8266 + all ESP32 Arduino targets)
 // ---------------------------------------------------------------------------

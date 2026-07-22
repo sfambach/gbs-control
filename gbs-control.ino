@@ -129,7 +129,7 @@ unsigned long pingLastTime;
 
 typedef TV5725<GBS_ADDR> GBS;
 
-static unsigned long lastVsyncLock = millis();
+unsigned long lastVsyncLock = millis();
 
 // Si5351mcu library by Pavel Milanes
 // https://github.com/pavelmc/Si5351mcu
@@ -142,8 +142,6 @@ const char *ap_ssid = GBS_WIFI_AP_SSID;
 const char *ap_password = GBS_WIFI_AP_PASSWORD;
 const char *device_hostname_full = GBS_DEVICE_HOSTNAME_FULL;
 const char *device_hostname_partial = GBS_DEVICE_HOSTNAME;
-static const char ap_info_string[] PROGMEM = GBS_WIFI_AP_INFO;
-static const char st_info_string[] PROGMEM = GBS_WIFI_STA_INFO;
 
 AsyncWebServer server(GBS_WEB_SERVER_PORT);
 DNSServer dnsServer;
@@ -192,75 +190,8 @@ char serialCommand;               // Serial / Web Server commands
 char userCommand;               // Serial / Web Server commands
 //uint8_t globalDelay; // used for dev / debug
 
-#if GBS_ENABLE_WEB_GUI && defined(ESP8266)
-// serial mirror class for websocket logs
-class SerialMirror : public Stream
-{
-    size_t write(const uint8_t *data, size_t size)
-    {
-        if (ESP.getFreeHeap() > 20000) {
-            webSocket.broadcastTXT(data, size);
-        } else {
-            webSocket.disconnect();
-        }
-        Serial.write(data, size);
-        return size;
-    }
-
-    size_t write(const char *data, size_t size)
-    {
-        if (ESP.getFreeHeap() > 20000) {
-            webSocket.broadcastTXT(data, size);
-        } else {
-            webSocket.disconnect();
-        }
-        Serial.write(data, size);
-        return size;
-    }
-
-    size_t write(uint8_t data)
-    {
-        if (ESP.getFreeHeap() > 20000) {
-            webSocket.broadcastTXT(&data, 1);
-        } else {
-            webSocket.disconnect();
-        }
-        Serial.write(data);
-        return 1;
-    }
-
-    size_t write(char data)
-    {
-        if (ESP.getFreeHeap() > 20000) {
-            webSocket.broadcastTXT(&data, 1);
-        } else {
-            webSocket.disconnect();
-        }
-        Serial.write(data);
-        return 1;
-    }
-
-    int available()
-    {
-        return 0;
-    }
-    int read()
-    {
-        return -1;
-    }
-    int peek()
-    {
-        return -1;
-    }
-    void flush() {}
-};
-
-SerialMirror SerialM;
-#else
-#define SerialM Serial
-#endif
-
 #include "framesync.h"
+#include "gbs_serial.h"
 #include "gbs_globals.h"
 #include "gbs_video.h"
 #include "gbs_prefs.h"
@@ -1964,8 +1895,3 @@ void loop()
 #endif // GBS_ENABLE_WEB_GUI
 #endif // HAVE_PINGER_LIBRARY
 }
-
-
-// sets every element of str to 0 (clears array)
-
-#endif

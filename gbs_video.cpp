@@ -2,6 +2,8 @@
 #include "platform_gbs.h"
 #include "gbs_globals.h"
 #include "gbs_video.h"
+#include "gbs_prefs.h"
+#include "gbs_wifi.h"
 #include "presets/ntsc_240p.h"
 #include "presets/pal_240p.h"
 #include "presets/ntsc_720x480.h"

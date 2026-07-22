@@ -4,6 +4,9 @@
 #include "gbs_wifi.h"
 #include "gbs_prefs.h"
 #include "gbs_video.h"
+#include "gbs_prefs.h"
+#include "gbs_wifi.h"
+#include "include/slot.h"
 
 #if GBS_ENABLE_WEB_GUI
 #if defined(ESP8266)
@@ -26,6 +29,7 @@
 #include <PersWiFiManager.h>
 #include "lib/WebSockets.h"
 #include "lib/WebSocketsServer.h"
+#include "generated/webui_html.h"
 
 #if defined(ESP8266)
 static inline void gbs_wifi_set_hostname(const char *name) { WiFi.hostname(name); }
@@ -59,13 +63,15 @@ static inline void gbs_mdns_add_http_service() { MDNS.addService("http", "tcp", 
 extern const char *ap_ssid;
 extern const char *ap_password;
 extern const char *device_hostname_partial;
+
+const char ap_info_string[] PROGMEM = GBS_WIFI_AP_INFO;
+const char st_info_string[] PROGMEM = GBS_WIFI_STA_INFO;
+
 extern AsyncWebServer server;
 extern DNSServer dnsServer;
 extern WebSocketsServer webSocket;
 extern PersWiFiManager persWM;
 
-
-#if GBS_ENABLE_WEB_GUI
 void updateWebSocketData()
 {
     if (rto->webServerEnabled && rto->webServerStarted) {
@@ -202,12 +208,6 @@ void handleWiFi(boolean instant)
 #endif
     yield();
 }
-#endif // GBS_ENABLE_WEB_GUI
-#include "generated/webui_html.h"
-
-#if GBS_ENABLE_WEB_GUI
-#include "generated/webui_html.h"
-// Regenerate: cd public && npm run build  (see public/README.md)
 
 void handleType2Command(char argument)
 {
