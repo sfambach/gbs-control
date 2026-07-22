@@ -123,8 +123,6 @@ jobs:
             required: true
           - board: esp32dev
             required: false
-          - board: esp32-c3-devkitm-1
-            required: false
 
     steps:
       - name: Checkout
