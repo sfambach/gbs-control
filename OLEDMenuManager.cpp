@@ -2,6 +2,8 @@
    See https://github.com/PSHarold/OLED-SSD1306-Menu 
    for original code, license and documentation
 */
+#include "config.h"
+#if GBS_ENABLE_OLED
 #include "OLEDMenuManager.h"
 #include "OLEDMenuFonts.h"
 
@@ -405,3 +407,4 @@ void OLEDMenuManager::tick(OLEDMenuNav nav)
         this->lastUpdateTime = curMili;
     }
 }
+#endif // GBS_ENABLE_OLED

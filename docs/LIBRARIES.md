@@ -2,7 +2,33 @@
 
 This firmware mixes **PlatformIO / Arduino registry libraries**, **vendored modified copies** (compiled with the project), and **upstream reference trees** in `3rdparty/` (git submodules, not compiled).
 
-Edit hardware and feature settings in [`config.h`](../config.h), not in this document.
+Edit hardware, feature, and pin settings in [`config.h`](../config.h), not in this document.
+
+### Feature toggles (`config.h`)
+
+| Define | Default | Effect |
+|---|---|---|
+| `GBS_ENABLE_OLED` | `1` | SSD1306 display, rotary encoder menu, boot splash |
+| `GBS_ENABLE_WEB_GUI` | `1` | WiFi, web UI, WebSocket control, PersWiFiManager |
+| `GBS_ENABLE_OTA` | `1` | Arduino OTA (requires web GUI; enabled at runtime via UI / serial `c`) |
+| `GBS_DEVICE_MASTER` | defined | Master vs slave WiFi hostname / AP SSID |
+
+Set any define to `0` to exclude that subsystem at compile time (saves flash/RAM).
+
+### Pin overrides
+
+All `GBS_*_PIN*` values can be overridden per board via PlatformIO `build_flags`, for example:
+
+```ini
+build_flags =
+    -DGBS_DEBUG_IN_PIN=4
+    -DGBS_OLED_PIN_SDA=8
+    -DGBS_OLED_PIN_SCL=9
+```
+
+On **ESP32**, frame-sync measurement on `GBS_DEBUG_IN_PIN` uses the **PCNT** hardware glitch filter ([`platform_gbs.h`](../platform_gbs.h)). Pulse timing uses the CPU cycle counter on Xtensa ESP32 (classic, S2, S3) and microseconds on RISC-V ESP32 (C3, C6, H2).
+
+PlatformIO environments: `d1_mini` (ESP8266), `esp32dev`, `esp32-s3-devkitc-1`, `esp32-c3-devkitm-1`, `esp32-c6-devkitc-1` — see [`platformio.ini`](../platformio.ini).
 
 ## Quick reference
 

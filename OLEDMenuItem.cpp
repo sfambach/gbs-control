@@ -1,3 +1,5 @@
+#include "config.h"
+#if GBS_ENABLE_OLED
 #include "OLEDMenuItem.h"
 #include <string.h>
 void OLEDMenuItem::calculate()
@@ -66,3 +68,4 @@ void OLEDMenuItem::calculate()
         this->pageInParent = ++parent->maxPageIndex;
     }
 }
+#endif // GBS_ENABLE_OLED

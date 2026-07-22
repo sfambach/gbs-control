@@ -2,11 +2,25 @@
 #define GBS_CONFIG_H_
 
 // =============================================================================
-// Feature toggles
+// Feature toggles — set to 0 to disable and strip related init at compile time
 // =============================================================================
 
+// SSD1306 OLED + rotary encoder menu
+#define GBS_ENABLE_OLED 1
+
+// WiFi web UI, WebSocket control, PersWiFiManager, SPIFFS preset HTTP API
+#define GBS_ENABLE_WEB_GUI 1
+
+// Over-the-air firmware updates (requires GBS_ENABLE_WEB_GUI; enabled at runtime via web/serial)
+#define GBS_ENABLE_OTA 1
+
 #define HAVE_BUTTONS 0
+
+#if GBS_ENABLE_OLED
 #define USE_NEW_OLED_MENU 1
+#else
+#define USE_NEW_OLED_MENU 0
+#endif
 
 // Uncomment to enable WiFi ping debugging helpers (ESPping — ESP8266 and ESP32).
 // #define HAVE_PINGER_LIBRARY
@@ -19,22 +33,42 @@
 // #define FS_DEBUG_LED
 // #define FRAMESYNC_DEBUG
 
+#if GBS_ENABLE_OTA && !GBS_ENABLE_WEB_GUI
+#error "GBS_ENABLE_OTA requires GBS_ENABLE_WEB_GUI (WiFi stack)"
+#endif
+
 // =============================================================================
 // Platform pins
+// Override any pin with -DGBS_* on the compiler command line or in
+// platformio.ini build_flags for your board (see docs/LIBRARIES.md).
 // =============================================================================
 
 #if defined(ESP8266)
 
-#define GBS_PIN_ENCODER_CLK 14   // D5
-#define GBS_PIN_ENCODER_DATA 13  // D7
+#ifndef GBS_PIN_ENCODER_CLK
+#define GBS_PIN_ENCODER_CLK 14 // D5 on Wemos D1 mini
+#endif
+#ifndef GBS_PIN_ENCODER_DATA
+#define GBS_PIN_ENCODER_DATA 13 // D7
+#endif
+#ifndef GBS_PIN_ENCODER_SWITCH
 #define GBS_PIN_ENCODER_SWITCH 0 // D3, must stay HIGH at boot
+#endif
 
+#ifndef GBS_OLED_I2C_ADDR
 #define GBS_OLED_I2C_ADDR 0x3c
-#define GBS_OLED_PIN_SDA D2 // GPIO4 on Wemos D1 mini
-#define GBS_OLED_PIN_SCL D1 // GPIO5 on Wemos D1 mini
+#endif
+#ifndef GBS_OLED_PIN_SDA
+#define GBS_OLED_PIN_SDA 4 // D2 / GPIO4 on Wemos D1 mini
+#endif
+#ifndef GBS_OLED_PIN_SCL
+#define GBS_OLED_PIN_SCL 5 // D1 / GPIO5 on Wemos D1 mini
+#endif
 
 // Sync measurement input: D6 on Wemos D1 mini / Lolin NodeMCU (D12/MISO)
-#define GBS_DEBUG_IN_PIN D6
+#ifndef GBS_DEBUG_IN_PIN
+#define GBS_DEBUG_IN_PIN 12 // GPIO12 / D6
+#endif
 
 #define GBS_LED_ON                      \
     pinMode(LED_BUILTIN, OUTPUT);       \
@@ -43,21 +77,35 @@
     digitalWrite(LED_BUILTIN, HIGH);        \
     pinMode(LED_BUILTIN, INPUT)
 
-// Faster digitalRead for encoder pins on ESP8266.
 #define GBS_FAST_DIGITAL_READ(pin) ((GPIO_REG_READ(GPIO_IN_ADDRESS) >> (pin)) & 1)
 
 #elif defined(ESP32)
 
-// TODO: Assign pins when bringing up ESP32 hardware.
+#ifndef GBS_PIN_ENCODER_CLK
 #define GBS_PIN_ENCODER_CLK 18
+#endif
+#ifndef GBS_PIN_ENCODER_DATA
 #define GBS_PIN_ENCODER_DATA 19
+#endif
+#ifndef GBS_PIN_ENCODER_SWITCH
 #define GBS_PIN_ENCODER_SWITCH 0
+#endif
 
+#ifndef GBS_OLED_I2C_ADDR
 #define GBS_OLED_I2C_ADDR 0x3c
+#endif
+#ifndef GBS_OLED_PIN_SDA
 #define GBS_OLED_PIN_SDA 21
+#endif
+#ifndef GBS_OLED_PIN_SCL
 #define GBS_OLED_PIN_SCL 22
+#endif
 
+// Frame-sync debug tap — assign to the pin wired on your ESP32 GBS board.
+// PCNT hardware filter is applied on ESP32 (see platform_gbs.h).
+#ifndef GBS_DEBUG_IN_PIN
 #define GBS_DEBUG_IN_PIN 4
+#endif
 
 #define GBS_LED_ON digitalWrite(LED_BUILTIN, HIGH)
 #define GBS_LED_OFF digitalWrite(LED_BUILTIN, LOW)
@@ -66,6 +114,14 @@
 
 #else
 #error "gbs-control requires ESP8266 or ESP32"
+#endif
+
+// I2C bus for GBS8200/8220 and Si5351 (defaults follow OLED wiring)
+#ifndef GBS_I2C_PIN_SDA
+#define GBS_I2C_PIN_SDA GBS_OLED_PIN_SDA
+#endif
+#ifndef GBS_I2C_PIN_SCL
+#define GBS_I2C_PIN_SCL GBS_OLED_PIN_SCL
 #endif
 
 #ifndef DEBUG_IN_PIN

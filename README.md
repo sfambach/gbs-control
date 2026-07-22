@@ -30,7 +30,7 @@ https://circuit-board.de/forum/index.php/Thread/15601-GBS-8220-Custom-Firmware-i
 
 ## Configuration
 
-Hardware pins, feature toggles, WiFi credentials, OLED menu options, and tuning constants are centralized in **`config.h`**. Edit that file when adapting the firmware to your board (including planned ESP32 support).
+Hardware pins, feature toggles (`GBS_ENABLE_OLED`, `GBS_ENABLE_WEB_GUI`, `GBS_ENABLE_OTA`), WiFi credentials, OLED menu options, and tuning constants are centralized in **`config.h`**. Edit that file when adapting the firmware to your board (including ESP32-C3/S3/C6 and other variants — see `platformio.ini` and `docs/LIBRARIES.md`).
 
 ## Building
 

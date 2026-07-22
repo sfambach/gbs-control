@@ -1,4 +1,5 @@
 #include "config.h"
+#if GBS_ENABLE_OLED
 #if defined(ESP8266)
 #include <ESP8266WiFi.h>
 #elif defined(ESP32)
@@ -8,8 +9,10 @@
 #include "options.h"
 #include "tv5725.h"
 #include "slot.h"
+#if GBS_ENABLE_WEB_GUI
 #include "src/WebSockets.h"
 #include "src/WebSocketsServer.h"
+#endif
 #include "fonts.h"
 #include "OSDManager.h"
 
@@ -22,10 +25,12 @@ extern void loadDefaultUserOptions();
 extern uint8_t getVideoMode();
 extern runTimeOptions *rto;
 extern userOptions *uopt;
+extern const char *device_hostname_full;
+#if GBS_ENABLE_WEB_GUI
+extern WebSocketsServer webSocket;
 extern const char *ap_ssid;
 extern const char *ap_password;
-extern const char *device_hostname_full;
-extern WebSocketsServer webSocket;
+#endif
 extern OLEDMenuManager oledMenu;
 extern OSDManager osdManager;
 unsigned long oledMenuFreezeStartTime;
@@ -196,11 +201,15 @@ bool resetMenuHandler(OLEDMenuManager *manager, OLEDMenuItem *item, OLEDMenuNav,
             break;
     }
     display->display();
+#if GBS_ENABLE_WEB_GUI
     webSocket.close();
+#endif
     delay(50);
     switch (item->tag) {
         case MT_RESET_WIFI:
+#if GBS_ENABLE_WEB_GUI
             WiFi.disconnect();
+#endif
             break;
         case MT_RESTORE_FACTORY:
             loadDefaultUserOptions();
@@ -291,6 +300,7 @@ bool currentSettingHandler(OLEDMenuManager *manager, OLEDMenuItem *, OLEDMenuNav
 
     return false;
 }
+#if GBS_ENABLE_WEB_GUI
 bool wifiMenuHandler(OLEDMenuManager *manager, OLEDMenuItem *item, OLEDMenuNav, bool)
 {
     static char ssid[64];
@@ -326,6 +336,7 @@ bool wifiMenuHandler(OLEDMenuManager *manager, OLEDMenuItem *item, OLEDMenuNav, 
     }
     return true;
 }
+#endif // GBS_ENABLE_WEB_GUI
 bool osdMenuHanlder(OLEDMenuManager *manager, OLEDMenuItem *, OLEDMenuNav nav, bool isFirstTime)
 {
     static unsigned long start;
@@ -406,8 +417,10 @@ void initOLEDMenu()
     // Presets
     oledMenu.registerItem(root, MT_NULL, IMAGE_ITEM(OM_PRESET), presetsCreationMenuHandler);
 
+#if GBS_ENABLE_WEB_GUI
     // WiFi
     oledMenu.registerItem(root, MT_NULL, IMAGE_ITEM(OM_WIFI), wifiMenuHandler);
+#endif
 
     // Current Settings
     oledMenu.registerItem(root, MT_NULL, IMAGE_ITEM(OM_CURRENT), currentSettingHandler);
@@ -418,3 +431,4 @@ void initOLEDMenu()
     oledMenu.registerItem(resetMenu, MT_RESTORE_FACTORY, IMAGE_ITEM(OM_RESTORE_FACTORY), resetMenuHandler);
     oledMenu.registerItem(resetMenu, MT_RESET_WIFI, IMAGE_ITEM(OM_RESET_WIFI), resetMenuHandler);
 }
+#endif // GBS_ENABLE_OLED

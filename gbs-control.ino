@@ -1,4 +1,5 @@
 #include "config.h"
+#include "platform_gbs.h"
 #include "ntsc_240p.h"
 #include "pal_240p.h"
 #include "ntsc_720x480.h"
@@ -21,19 +22,19 @@
 #include <Wire.h>
 #include "tv5725.h"
 #include "osd.h"
+#if GBS_ENABLE_OLED
 #include "SSD1306Wire.h"
 #include "images.h"
-
-static inline void writeBytes(uint8_t slaveRegister, uint8_t *values, uint8_t numValues);
-const uint8_t *loadPresetFromSPIFFS(byte forVideoMode);
-
 SSD1306Wire display(GBS_OLED_I2C_ADDR, GBS_OLED_PIN_SDA, GBS_OLED_PIN_SCL);
+#endif
 const int pin_clk = GBS_PIN_ENCODER_CLK;
 const int pin_data = GBS_PIN_ENCODER_DATA;
 const int pin_switch = GBS_PIN_ENCODER_SWITCH;
 
+static inline void writeBytes(uint8_t slaveRegister, uint8_t *values, uint8_t numValues);
+const uint8_t *loadPresetFromSPIFFS(byte forVideoMode);
 
-#if USE_NEW_OLED_MENU
+#if GBS_ENABLE_OLED && USE_NEW_OLED_MENU
 #include "OLEDMenuImplementation.h"
 #include "OSDManager.h"
 OLEDMenuManager oledMenu(&display);
@@ -57,6 +58,7 @@ volatile int oled_main_pointer = 0; // volatile vars change done with ISR
 volatile int oled_pointer_count = 0;
 volatile int oled_sub_pointer = 0;
 #endif
+#if GBS_ENABLE_WEB_GUI
 // ESP32Async: ESPAsyncTCP (ESP8266) / AsyncTCP (ESP32) + ESPAsyncWebServer — see docs/LIBRARIES.md
 // https://github.com/ESP32Async/ESPAsyncTCP
 // https://github.com/ESP32Async/AsyncTCP
@@ -126,6 +128,7 @@ static inline void gbs_mdns_add_http_service() { MDNS.addService("http", "tcp", 
 #include <ESPping.h>
 unsigned long pingLastTime;
 #endif
+#endif // GBS_ENABLE_WEB_GUI
 
 typedef TV5725<GBS_ADDR> GBS;
 
@@ -137,6 +140,7 @@ static unsigned long lastVsyncLock = millis();
 #include "src/si5351mcu.h"
 Si5351mcu Si;
 
+#if GBS_ENABLE_WEB_GUI
 const char *ap_ssid = GBS_WIFI_AP_SSID;
 const char *ap_password = GBS_WIFI_AP_PASSWORD;
 const char *device_hostname_full = GBS_DEVICE_HOSTNAME_FULL;
@@ -149,6 +153,7 @@ DNSServer dnsServer;
 WebSocketsServer webSocket(GBS_WEBSOCKET_PORT);
 //AsyncWebSocket webSocket("/ws");
 PersWiFiManager persWM(server, dnsServer);
+#endif
 
 #define LEDON GBS_LED_ON
 #define LEDOFF GBS_LED_OFF
@@ -209,7 +214,7 @@ char userCommand;               // Serial / Web Server commands
 static uint8_t lastSegment = 0xFF; // GBS segment for direct access
 //uint8_t globalDelay; // used for dev / debug
 
-#if defined(ESP8266)
+#if GBS_ENABLE_WEB_GUI && defined(ESP8266)
 // serial mirror class for websocket logs
 class SerialMirror : public Stream
 {
@@ -5801,22 +5806,23 @@ void printInfo()
 
 void stopWire()
 {
-    pinMode(SCL, INPUT);
-    pinMode(SDA, INPUT);
+    pinMode(GBS_I2C_PIN_SCL, INPUT);
+    pinMode(GBS_I2C_PIN_SDA, INPUT);
     delayMicroseconds(80);
 }
 
 void startWire()
 {
+#if defined(ESP8266)
     Wire.begin();
+#else
+    Wire.begin(GBS_I2C_PIN_SDA, GBS_I2C_PIN_SCL);
+#endif
     // The i2c wire library sets pullup resistors on by default.
     // Disable these to detect/work with GBS onboard pullups
-    pinMode(SCL, OUTPUT_OPEN_DRAIN);
-    pinMode(SDA, OUTPUT_OPEN_DRAIN);
-    // no issues even at 700k, requires ESP8266 160Mhz CPU clock, else (80Mhz) uses 400k in library
-    // no problem with Si5351 at 700k either
-    Wire.setClock(400000);
-    //Wire.setClock(700000);
+    pinMode(GBS_I2C_PIN_SCL, OUTPUT_OPEN_DRAIN);
+    pinMode(GBS_I2C_PIN_SDA, OUTPUT_OPEN_DRAIN);
+    Wire.setClock(GBS_I2C_CLOCK_HZ);
 }
 
 void fastSogAdjust()
@@ -7123,7 +7129,7 @@ void loadDefaultUserOptions()
 //  system_phy_set_powerup_option(0);
 //}
 
-#if !USE_NEW_OLED_MENU
+#if GBS_ENABLE_OLED && !USE_NEW_OLED_MENU
 void ICACHE_RAM_ATTR isrRotaryEncoder()
 {
     static unsigned long lastInterruptTime = 0;
@@ -7150,7 +7156,7 @@ void ICACHE_RAM_ATTR isrRotaryEncoder()
 }
 #endif
 
-#if USE_NEW_OLED_MENU
+#if GBS_ENABLE_OLED && USE_NEW_OLED_MENU
 void ICACHE_RAM_ATTR isrRotaryEncoderRotateForNewMenu()
 {
     unsigned long interruptTime = millis();
@@ -7190,6 +7196,7 @@ void ICACHE_RAM_ATTR isrRotaryEncoderPushForNewMenu()
 
 void setup()
 {
+#if GBS_ENABLE_OLED
     display.init();                 //inits OLED on I2C bus
     display.flipScreenVertically(); //orientation fix for OLED
 
@@ -7197,25 +7204,26 @@ void setup()
     pinMode(pin_data, INPUT_PULLUP);
     pinMode(pin_switch, INPUT_PULLUP);
 
-#if USE_NEW_OLED_MENU
+#if GBS_ENABLE_OLED && USE_NEW_OLED_MENU
     attachInterrupt(digitalPinToInterrupt(pin_clk), isrRotaryEncoderRotateForNewMenu, FALLING);
     attachInterrupt(digitalPinToInterrupt(pin_switch), isrRotaryEncoderPushForNewMenu, FALLING);
     initOLEDMenu();
     initOSD();
 #else
-    // ISR TO PIN
     attachInterrupt(digitalPinToInterrupt(pin_clk), isrRotaryEncoder, FALLING);
 #endif
+#endif
 
-    rto->webServerEnabled = true;
+    rto->webServerEnabled = (GBS_ENABLE_WEB_GUI != 0);
     rto->webServerStarted = false; // make sure this is set
 
     Serial.begin(115200); // Arduino IDE Serial Monitor requires the same 115200 bauds!
     Serial.setTimeout(10);
 
-    // millis() at this point: typically 65ms
+#if GBS_ENABLE_WEB_GUI
     // start web services as early in boot as possible
     gbs_wifi_set_hostname(device_hostname_partial); // was _full
+#endif
 
     startWire();
     // run some dummy commands to init I2C to GBS and cached segments
@@ -7225,13 +7233,14 @@ void setup()
     GBS::STATUS_00::read();
 
     if (rto->webServerEnabled) {
+#if GBS_ENABLE_OTA
         rto->allowUpdatesOTA = false;       // need to initialize for handleWiFi()
+#endif
         gbs_wifi_disable_sleep(); // low latency responses, less chance for missing packets
-        gbs_wifi_set_output_power(16.0f);         // float: min 0.0f, max 20.5f on ESP8266
+        gbs_wifi_set_output_power(16.0f);
         startWebserver();
         rto->webServerStarted = true;
     } else {
-        //WiFi.disconnect(); // deletes credentials
         gbs_wifi_force_off();
     }
 #ifdef HAVE_PINGER_LIBRARY
@@ -7243,7 +7252,9 @@ void setup()
     loadDefaultUserOptions();
     //globalDelay = 0;
 
-    rto->allowUpdatesOTA = false; // ESP over the air updates. default to off, enable via web interface
+#if GBS_ENABLE_OTA
+    rto->allowUpdatesOTA = false; // default off; enable via web UI or serial 'c'
+#endif
     rto->enableDebugPings = false;
     rto->autoBestHtotalEnabled = true; // automatically find the best horizontal total pixel value for a given input timing
     rto->syncLockFailIgnore = 16;      // allow syncLock to fail x-1 times in a row before giving up (sync glitch immunity)
@@ -7296,6 +7307,7 @@ void setup()
     userCommand = '@';
 
     pinMode(DEBUG_IN_PIN, INPUT);
+    gbs_measure_period_init_hw();
     pinMode(LED_BUILTIN, OUTPUT);
     LEDON; // enable the LED, lets users know the board is starting up
 
@@ -7305,12 +7317,16 @@ void setup()
     unsigned long initDelay = millis();
     // upped from < 500 to < 1500, allows more time for wifi and GBS startup
     while (millis() - initDelay < 1500) {
+#if GBS_ENABLE_OLED
         display.drawXbm(2, 2, gbsicon_width, gbsicon_height, gbsicon_bits);
         display.display();
+#endif
         handleWiFi(0);
         delay(1);
     }
+#if GBS_ENABLE_OLED
     display.clear();
+#endif
     // if i2c established and chip running, issue software reset now
     GBS::RESET_CONTROL_0x46::write(0);
     GBS::RESET_CONTROL_0x47::write(0);
@@ -7575,7 +7591,7 @@ bool buttonDown(uint8_t pos)
 
 void handleButtons(void)
 {
-#if USE_NEW_OLED_MENU
+#if GBS_ENABLE_OLED && USE_NEW_OLED_MENU
     OLEDMenuNav btn = OLEDMenuNav::IDLE;
     debounceButtons();
     if (buttonDown(MENU_SHIFT))
@@ -7608,6 +7624,7 @@ void discardSerialRxData()
     }
 }
 
+#if GBS_ENABLE_WEB_GUI
 void updateWebSocketData()
 {
     if (rto->webServerEnabled && rto->webServerStarted) {
@@ -7737,11 +7754,14 @@ void handleWiFi(boolean instant)
         }
     }
 
+#if GBS_ENABLE_OTA
     if (rto->allowUpdatesOTA) {
         ArduinoOTA.handle();
     }
+#endif
     yield();
 }
+#endif // GBS_ENABLE_WEB_GUI
 
 void myLog(char const* type, char command) {
     SerialM.printf("%s command %c at settings source %d, custom slot %d, status %x\n",
@@ -7767,7 +7787,7 @@ void loop()
     }
 #endif
 
-#if USE_NEW_OLED_MENU
+#if GBS_ENABLE_OLED && USE_NEW_OLED_MENU
     uint8_t oldIsrID = rotaryIsrID;
     // make sure no rotary encoder isr happened while menu was updating.
     // skipping this check will make the rotary encoder not responsive randomly.
@@ -8137,9 +8157,13 @@ void loop()
                 rto->printInfos = !rto->printInfos;
                 break;
             case 'c':
+#if GBS_ENABLE_OTA && GBS_ENABLE_WEB_GUI
                 SerialM.println(F("OTA Updates on"));
                 initUpdateOTA();
                 rto->allowUpdatesOTA = true;
+#else
+                SerialM.println(F("OTA disabled in config.h"));
+#endif
                 break;
             case 'G':
                 SerialM.print(F("Debug Pings "));
@@ -8667,7 +8691,9 @@ void loop()
     }
 
     if (userCommand != '@') {
+#if GBS_ENABLE_WEB_GUI
         handleType2Command(userCommand);
+#endif
         userCommand = '@'; // in case we handled web server command
         lastVsyncLock = millis();
         handleWiFi(1);
@@ -8884,9 +8910,9 @@ void loop()
     // power good now? // added syncWatcherEnabled check to enable passive mode
     // (passive mode = watching OFW without interrupting)
     if (!rto->boardHasPower && rto->syncWatcherEnabled) { // then check if power has come on
-        if (digitalRead(SCL) && digitalRead(SDA)) {
+        if (digitalRead(GBS_I2C_PIN_SCL) && digitalRead(GBS_I2C_PIN_SDA)) {
             delay(50);
-            if (digitalRead(SCL) && digitalRead(SDA)) {
+            if (digitalRead(GBS_I2C_PIN_SCL) && digitalRead(GBS_I2C_PIN_SDA)) {
                 Serial.println(F("power good"));
                 delay(350); // i've seen the MTV230 go on briefly on GBS power cycle
                 startWire();
@@ -8907,6 +8933,7 @@ void loop()
     }
 
 #ifdef HAVE_PINGER_LIBRARY
+#if GBS_ENABLE_WEB_GUI
     // periodic pings for debugging WiFi issues (ESPping)
     if (WiFi.status() == WL_CONNECTED) {
         if (rto->enableDebugPings && millis() - pingLastTime > 1000) {
@@ -8922,9 +8949,11 @@ void loop()
             }
         }
     }
-#endif
+#endif // GBS_ENABLE_WEB_GUI
+#endif // HAVE_PINGER_LIBRARY
 }
 
+#if GBS_ENABLE_WEB_GUI
 #include "webui_html.h"
 // Regenerate: cd public && npm run build  (see public/README.md)
 
@@ -9911,6 +9940,7 @@ void startWebserver()
 
 void initUpdateOTA()
 {
+#if GBS_ENABLE_OTA
     ArduinoOTA.setHostname("GBS OTA");
 
     // ArduinoOTA.setPassword("admin");
@@ -9953,7 +9983,9 @@ void initUpdateOTA()
     });
     ArduinoOTA.begin();
     yield();
+#endif // GBS_ENABLE_OTA
 }
+#endif // GBS_ENABLE_WEB_GUI
 
 // sets every element of str to 0 (clears array)
 void StrClear(char *str, uint16_t length)
@@ -10185,7 +10217,7 @@ void saveUserPrefs()
     f.close();
 }
 
-#if !USE_NEW_OLED_MENU
+#if GBS_ENABLE_OLED && !USE_NEW_OLED_MENU
 //OLED Functionality
 void settingsMenuOLED()
 {

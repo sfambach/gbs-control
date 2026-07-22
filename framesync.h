@@ -2,13 +2,15 @@
 #define FRAMESYNC_H_
 
 #include "config.h"
+#include "platform_gbs.h"
+#include "measure_period.h"
 
 // fast digitalRead()
 #if defined(ESP8266)
 #ifndef digitalRead
 #define digitalRead(x) GBS_FAST_DIGITAL_READ(x)
 #endif
-#else // Arduino / ESP32
+#else // ESP32 — fast GPIO read when DEBUG_IN_PIN is compile-time constant
 #include "fastpin.h"
 #define digitalRead(x) fastRead<x>()
 #endif
@@ -34,43 +36,6 @@ static inline void fs_wifi_no_sleep() { WiFi.setSleep(false); }
 #else
 #define fsDebugPrintf(...)
 #endif
-
-namespace MeasurePeriod {
-    volatile uint32_t stopTime, startTime;
-    volatile uint32_t armed;
-
-    void _risingEdgeISR_prepare();
-    void _risingEdgeISR_measure();
-
-    void start() {
-        startTime = 0;
-        stopTime = 0;
-        armed = 0;
-        attachInterrupt(DEBUG_IN_PIN, _risingEdgeISR_prepare, RISING);
-    }
-
-    void ICACHE_RAM_ATTR _risingEdgeISR_prepare()
-    {
-        noInterrupts();
-        //startTime = ESP.getCycleCount();
-        __asm__ __volatile__("rsr %0,ccount"
-                            : "=a"(startTime));
-        detachInterrupt(DEBUG_IN_PIN);
-        armed = 1;
-        attachInterrupt(DEBUG_IN_PIN, _risingEdgeISR_measure, RISING);
-        interrupts();
-    }
-
-    void ICACHE_RAM_ATTR _risingEdgeISR_measure()
-    {
-        noInterrupts();
-        //stopTime = ESP.getCycleCount();
-        __asm__ __volatile__("rsr %0,ccount"
-                            : "=a"(stopTime));
-        detachInterrupt(DEBUG_IN_PIN);
-        interrupts();
-    }
-}
 
 void setExternalClockGenFrequencySmooth(uint32_t freq) {
     uint32_t current = rto->freqExtClockGen;
@@ -129,8 +94,8 @@ private:
         ESP.wdtDisable();
         MeasurePeriod::start();
 
-        // typical: 300000 at 80MHz, 600000 at 160MHz
-        for (uint32_t i = 0; i < 3000000; i++) {
+        // typical: 300000 at 80MHz, 600000 at 160MHz (Xtensa); µs timeout on RISC-V ESP32
+        for (uint32_t i = 0; i < GBS_MEASURE_POLL_ITERATIONS; i++) {
             if (MeasurePeriod::armed) {
                 MeasurePeriod::armed = 0;
                 delay(7);
@@ -377,8 +342,8 @@ public:
         ESP.wdtDisable();
         MeasurePeriod::start();
 
-        // typical: 300000 at 80MHz, 600000 at 160MHz
-        for (uint32_t i = 0; i < 3000000; i++) {
+        // typical: 300000 at 80MHz, 600000 at 160MHz (Xtensa); µs timeout on RISC-V ESP32
+        for (uint32_t i = 0; i < GBS_MEASURE_POLL_ITERATIONS; i++) {
             if (MeasurePeriod::armed) {
                 MeasurePeriod::armed = 0;
                 delay(7);
