@@ -35,8 +35,8 @@ PlatformIO environments: `d1_mini` (ESP8266), `esp32dev`, `esp32-s3-devkitc-1`, 
 | Library | Upstream | Version / commit | Built from | ESP32 | Modified |
 |---|---|---|---|---|---|
 | AsyncPersWiFiManager | [sfambach/AsyncPersWiFiManager](https://github.com/sfambach/AsyncPersWiFiManager) | **v1.0.0** | [`3rdparty/AsyncPersWiFiManager/`](../3rdparty/AsyncPersWiFiManager/) submodule + PlatformIO `lib_deps` | Yes | Async fork |
-| arduinoWebSockets | [Links2004/arduinoWebSockets](https://github.com/Links2004/arduinoWebSockets) | tag **2.7.2** | [`src/WebSockets*`](../src/) — see [`src/websockets.md`](../src/websockets.md) | Yes | Yes |
-| Si5351mcu | [pavelmc/Si5351mcu](https://github.com/pavelmc/Si5351mcu) | **0.7.1** ([cbbd806](https://github.com/pavelmc/Si5351mcu/commit/cbbd8067e9c8e35ca2b9c886c2c97d8d553c97ed)) | [`src/si5351mcu.*`](../src/si5351mcu.h) | Wire-based | Yes |
+| arduinoWebSockets | [Links2004/arduinoWebSockets](https://github.com/Links2004/arduinoWebSockets) | tag **2.7.2** | [`lib/WebSockets*`](../lib/) — see [`lib/websockets.md`](../lib/websockets.md) | Yes | Yes |
+| Si5351mcu | [pavelmc/Si5351mcu](https://github.com/pavelmc/Si5351mcu) | **0.7.1** ([cbbd806](https://github.com/pavelmc/Si5351mcu/commit/cbbd8067e9c8e35ca2b9c886c2c97d8d553c97ed)) | [`lib/si5351mcu.*`](../lib/si5351mcu.h) | Wire-based | Yes |
 | OLED menu UI | [PSHarold/OLED-SSD1306-Menu](https://github.com/PSHarold/OLED-SSD1306-Menu) | adapted | [`OLEDMenu*.h` / `.cpp`](../OLEDMenuManager.h) | Yes | Yes |
 | ESPAsyncTCP | [ESP32Async/ESPAsyncTCP](https://github.com/ESP32Async/ESPAsyncTCP) | **v2.0.0** | [`3rdparty/ESPAsyncTCP/`](../3rdparty/ESPAsyncTCP/) ref + PlatformIO `lib_deps` | — | No |
 | AsyncTCP | [ESP32Async/AsyncTCP](https://github.com/ESP32Async/AsyncTCP) | **v3.5.0** | [`3rdparty/AsyncTCP/`](../3rdparty/AsyncTCP/) ref + PlatformIO `lib_deps` | Yes | No |
@@ -62,7 +62,7 @@ Do not install ESPAsyncTCP on ESP32 or AsyncTCP on ESP8266 — they are platform
 | Path | Tag | Purpose |
 |---|---|---|
 | [`3rdparty/AsyncPersWiFiManager/`](../3rdparty/AsyncPersWiFiManager/) | v1.0.0 | Async ESPAsyncWebServer WiFi manager ([sfambach fork](https://github.com/sfambach/AsyncPersWiFiManager)) |
-| [`3rdparty/WebSockets/`](../3rdparty/WebSockets/) | 2.7.2 | Upstream — diff against patched `src/` copy |
+| [`3rdparty/WebSockets/`](../3rdparty/WebSockets/) | 2.7.2 | Upstream — diff against patched `lib/` copy |
 | [`3rdparty/ESPAsyncTCP/`](../3rdparty/ESPAsyncTCP/) | v2.0.0 | Pinned ESP8266 async TCP reference |
 | [`3rdparty/AsyncTCP/`](../3rdparty/AsyncTCP/) | v3.5.0 | Pinned ESP32 async TCP reference |
 | [`3rdparty/ESPAsyncWebServer/`](../3rdparty/ESPAsyncWebServer/) | v3.11.2 | Pinned web server reference |
@@ -75,7 +75,7 @@ Excluded from the firmware build via `build_src_filter` in `platformio.ini`.
 
 ### gbs-control WebSockets notes
 
-- **ESP8266:** vendored `src/WebSockets.h` forces `NETWORK_ESP8266_ASYNC` (no `webSocket.loop()` needed).
+- **ESP8266:** vendored `lib/WebSockets.h` forces `NETWORK_ESP8266_ASYNC` (no `webSocket.loop()` needed).
 - **ESP32:** upstream default `NETWORK_ESP32` (sync). When the main firmware is ported, call `webSocket.loop()` from the main loop unless you switch to an async network type.
 
 ### Project code (not external libraries)

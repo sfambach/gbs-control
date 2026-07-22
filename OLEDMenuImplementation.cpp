@@ -6,12 +6,12 @@
 #include <WiFi.h>
 #endif
 #include "OLEDMenuImplementation.h"
-#include "options.h"
+#include "include/options.h"
 #include "tv5725.h"
-#include "slot.h"
+#include "include/slot.h"
 #if GBS_ENABLE_WEB_GUI
-#include "src/WebSockets.h"
-#include "src/WebSocketsServer.h"
+#include "lib/WebSockets.h"
+#include "lib/WebSocketsServer.h"
 #endif
 #include "fonts.h"
 #include "OSDManager.h"

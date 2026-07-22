@@ -20,9 +20,9 @@ The build pipeline:
 
 1. **`public/` sources** (`src/index.html.tpl`, `src/index.js`, `src/style.css`, …) are bundled into
 2. **`webui.html`** at the repo root — intermediate artifact (gitignored)
-3. **`webui_html.h`** at the repo root — gzipped C array embedded by the firmware sketch
+3. **`generated/webui_html.h`** — gzipped C array embedded by the firmware sketch
 
-Commit **`webui_html.h`** after UI changes. Do not commit `webui.html`.
+Commit **`generated/webui_html.h`** after UI changes. Do not commit `webui.html`.
 
 Then compile and upload the GBS-Control sketch (Arduino IDE or PlatformIO).
 

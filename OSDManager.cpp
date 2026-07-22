@@ -1,5 +1,5 @@
 #include "OSDManager.h"
-#include "options.h"
+#include "include/options.h"
 extern userOptions *uopt;
 extern void saveUserPrefs();
 extern void shiftHorizontalRight();

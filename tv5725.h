@@ -2,7 +2,7 @@
 #define TV5725_H_
 
 #include "config.h"
-#include "tw.h"
+#include "include/tw.h"
 
 namespace detail
 {
