@@ -1,13 +1,3 @@
-# Minor Changes to gbs-control to fix build
-
-* 20260712 - Const added for async parameter 
-
-
-
-
-
-
-
 # gbs-control
 
 Documentation: https://ramapcsx2.github.io/gbs-control/
@@ -36,4 +26,30 @@ https://www.youtube.com/watch?v=fmfR0XI5czI
 
 Development threads:  
 https://shmups.system11.org/viewtopic.php?f=6&t=52172   
-https://circuit-board.de/forum/index.php/Thread/15601-GBS-8220-Custom-Firmware-in-Arbeit/   
+https://circuit-board.de/forum/index.php/Thread/15601-GBS-8220-Custom-Firmware-in-Arbeit/
+
+## Configuration
+
+Hardware pins, feature toggles, WiFi credentials, OLED menu options, and tuning constants are centralized in **`config.h`**. Edit that file when adapting the firmware to your board (including planned ESP32 support).
+
+## Building
+
+Third-party libraries, submodule setup, **PlatformIO**, and **Arduino IDE** instructions are documented in **[docs/LIBRARIES.md](docs/LIBRARIES.md)**.
+
+Clone with submodules (pinned reference copies under `3rdparty/` — AsyncPersWiFiManager, WebSockets, ESP32Async stack, ESPping, SSD1306):
+
+```bash
+git clone --recursive https://github.com/sfambach/gbs-control.git
+# or, after a plain clone:
+git submodule update --init --recursive
+```
+
+PlatformIO builds still download libraries via `lib_deps`; submodules are for version pinning and offline diff. See **[docs/LIBRARIES.md](docs/LIBRARIES.md)**.
+
+**PlatformIO:** `pio run -e d1_mini` (ESP8266) · `pio run -e esp32dev` (ESP32 library target, firmware port in progress)
+
+**Arduino IDE:** open `gbs-control.ino`. Install board support and external libraries per platform — see **[docs/LIBRARIES.md](docs/LIBRARIES.md)**. WebSockets and Si5351mcu are vendored in `src/`; WiFi management uses **[AsyncPersWiFiManager](https://github.com/sfambach/AsyncPersWiFiManager)**.
+
+**Web UI:** sources in [`public/`](public/). Run `npm run build` there to regenerate [`webui_html.h`](webui_html.h) — see [`public/README.md`](public/README.md).
+
+**Author:** [www.fambach.net](https://www.fambach.net)   
