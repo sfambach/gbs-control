@@ -31,6 +31,10 @@ GBS-Control is an Arduino/PlatformIO firmware for the GBS8200/GBS8220 scan conve
 
 ## Build systems
 
+**Makefile** (repo root): `make` builds web UI + firmware; `make help` lists targets. Requires GNU Make, PlatformIO (`pio`), Node/npm, and bash/gzip/xxd for the web UI step.
+
+**GitHub Actions:** builds firmware on push/PR when source files change (docs-only commits are skipped). Nightly at 03:00 UTC runs only if `main` had firmware commits in the last 24 hours. Manual run always builds. Artifacts: 14 days ([Actions tab](https://github.com/sfambach/gbs-control/actions)).
+
 **PlatformIO** (`platformio.ini`):
 
 - `src_dir = ./` — sketch and module `.cpp` files at repo root

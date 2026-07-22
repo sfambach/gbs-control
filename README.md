@@ -48,8 +48,19 @@ PlatformIO builds still download libraries via `lib_deps`; submodules are for ve
 
 **PlatformIO:** `pio run -e d1_mini` (ESP8266) · `pio run -e esp32dev` (ESP32 library target, firmware port in progress)
 
-**Arduino IDE:** open `gbs-control.ino`. Install board support and external libraries per platform — see **[docs/LIBRARIES.md](docs/LIBRARIES.md)**. WebSockets and Si5351mcu are vendored in `src/`; WiFi management uses **[AsyncPersWiFiManager](https://github.com/sfambach/AsyncPersWiFiManager)**.
+Or use the root **Makefile** (requires `make`, `pio`, and npm):
 
-**Web UI:** sources in [`public/`](public/). Run `npm run build` there to regenerate [`webui_html.h`](webui_html.h) — see [`public/README.md`](public/README.md).
+```bash
+make                  # web UI + firmware (ESP8266 / d1_mini)
+make firmware-only    # skip web UI rebuild
+make upload BOARD=esp32dev
+make help
+```
+
+**CI / nightly builds:** GitHub Actions builds when firmware or web-UI sources change (pure doc edits are skipped). Nightly runs only after recent commits on `main`. Download `.bin` files from *Artifacts* in the [Actions tab](https://github.com/sfambach/gbs-control/actions). Manual rebuild: *Actions → Build → Run workflow*.
+
+**Arduino IDE:** open `gbs-control.ino`. Install board support and external libraries per platform — see **[docs/LIBRARIES.md](docs/LIBRARIES.md)**. WebSockets and Si5351mcu are vendored in `lib/`; WiFi management uses **[AsyncPersWiFiManager](https://github.com/sfambach/AsyncPersWiFiManager)**.
+
+**Web UI:** sources in [`public/`](public/). Run `npm run build` there (or `make webui`) to regenerate [`generated/webui_html.h`](generated/webui_html.h) — see [`public/README.md`](public/README.md).
 
 **Author:** [www.fambach.net](https://www.fambach.net)   

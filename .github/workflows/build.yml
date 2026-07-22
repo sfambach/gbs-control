@@ -1,0 +1,200 @@
+# Build GBS-Control firmware with PlatformIO.
+#
+# Runs only when relevant files changed (push/PR) or on nightly if main had
+# firmware commits in the last 24 hours. Manual runs always build everything.
+#
+# Web UI job: uses committed generated/webui_html.h (public/assets not in repo).
+
+name: Build
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "images/**"
+      - ".gitignore"
+      - ".gitattributes"
+      - ".clang-format"
+      - "LICENSE"
+      - ".github/FUNDING.yml"
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "images/**"
+      - ".gitignore"
+      - ".gitattributes"
+      - ".clang-format"
+      - "LICENSE"
+      - ".github/FUNDING.yml"
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      firmware: ${{ steps.outputs.outputs.firmware }}
+      webui: ${{ steps.outputs.outputs.webui }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Path filter (push / PR)
+        uses: dorny/paths-filter@v3
+        id: filter
+        if: github.event_name == 'push' || github.event_name == 'pull_request'
+        with:
+          filters: |
+            firmware:
+              - '.github/workflows/**'
+              - 'Makefile'
+              - 'platformio.ini'
+              - '**/*.ino'
+              - '**/*.cpp'
+              - '**/*.c'
+              - '**/*.h'
+              - 'lib/**'
+              - 'presets/**'
+              - 'ofw/**'
+              - 'include/**'
+              - 'generated/**'
+              - '3rdparty/**'
+            webui:
+              - 'public/**'
+              - 'generated/webui_html.h'
+
+      - name: Nightly change gate
+        id: nightly
+        if: github.event_name == 'schedule'
+        run: |
+          BASE=$(git rev-list -1 --before="24 hours ago" origin/main || true)
+          if [ -z "$BASE" ]; then
+            echo "firmware=true" >> "$GITHUB_OUTPUT"
+            echo "webui=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if git diff --name-only "$BASE" origin/main | grep -qE \
+            '(^|/)([^/]+\.(ino|cpp|c|h)|platformio\.ini|Makefile)$|^\.github/workflows/|^(lib|presets|ofw|include|generated|3rdparty)/'; then
+            echo "firmware=true" >> "$GITHUB_OUTPUT"
+            echo "Nightly: firmware-related changes in the last 24 hours."
+          else
+            echo "firmware=false" >> "$GITHUB_OUTPUT"
+            echo "Nightly: no firmware changes in the last 24 hours — skipping build."
+          fi
+          echo "webui=false" >> "$GITHUB_OUTPUT"
+
+      - name: Set job outputs
+        id: outputs
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "firmware=true" >> "$GITHUB_OUTPUT"
+            echo "webui=true" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "schedule" ]; then
+            echo "firmware=${{ steps.nightly.outputs.firmware }}" >> "$GITHUB_OUTPUT"
+            echo "webui=${{ steps.nightly.outputs.webui }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "firmware=${{ steps.filter.outputs.firmware }}" >> "$GITHUB_OUTPUT"
+            echo "webui=${{ steps.filter.outputs.webui }}" >> "$GITHUB_OUTPUT"
+          fi
+
+  firmware:
+    name: firmware (${{ matrix.board }})
+    needs: changes
+    if: needs.changes.outputs.firmware == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - board: d1_mini
+            required: true
+          - board: esp32dev
+            required: false
+          - board: esp32-c3-devkitm-1
+            required: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+          key: pio-${{ runner.os }}-${{ matrix.board }}-${{ hashFiles('platformio.ini') }}
+          restore-keys: |
+            pio-${{ runner.os }}-${{ matrix.board }}-
+            pio-${{ runner.os }}-
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install PlatformIO
+        run: pip install -U platformio
+
+      - name: Build firmware
+        id: build
+        continue-on-error: ${{ !matrix.required }}
+        run: pio run -e ${{ matrix.board }}
+
+      - name: Upload firmware artifact
+        if: steps.build.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ matrix.board }}
+          path: |
+            .pio/build/${{ matrix.board }}/firmware*.bin
+            .pio/build/${{ matrix.board }}/firmware*.elf
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Required board failed
+        if: matrix.required && steps.build.outcome != 'success'
+        run: |
+          echo "::error::Required build for ${{ matrix.board }} failed"
+          exit 1
+
+  webui:
+    name: webui (smoke)
+    needs: changes
+    if: needs.changes.outputs.webui == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: public/package-lock.json
+
+      - name: Install dependencies
+        working-directory: public
+        run: npm ci
+
+      - name: Typecheck TypeScript
+        working-directory: public
+        run: npx tsc ./src/index.ts --target ES6 --noEmit
+
+      - name: Check embedded web UI header exists
+        run: test -f generated/webui_html.h
