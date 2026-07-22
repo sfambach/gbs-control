@@ -1,11 +1,10 @@
 #ifndef OSD_MANAGER_H_
 #define OSD_MANAGER_H_
+#include "config.h"
 #include "tv5725.h"
-#define MENU_WIDTH 131
-#define MENU_HEIGHT 19
+typedef TV5725<GBS_ADDR> GBS;
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define MIN(a, b) ((a) > (b) ? (b) : (a))
-typedef TV5725<GBS_ADDR> GBS;
 struct OSDMenuConfig
 {
     uint8_t barLength;

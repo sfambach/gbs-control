@@ -1,8 +1,6 @@
 #ifndef _SLOT_H_
+#include "config.h"
 // SLOTS
-#define SLOTS_FILE "/slots.bin" // the file where to store slots metadata
-#define SLOTS_TOTAL 72          // max number of slots
-#define EMPTY_SLOT_NAME "Empty                   "
 typedef struct
 {
     char name[25];

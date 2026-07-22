@@ -1,0 +1,21 @@
+[submodule "3rdparty/WebSockets"]
+	path = 3rdparty/WebSockets
+	url = https://github.com/Links2004/arduinoWebSockets.git
+[submodule "3rdparty/ESPAsyncTCP"]
+	path = 3rdparty/ESPAsyncTCP
+	url = https://github.com/ESP32Async/ESPAsyncTCP.git
+[submodule "3rdparty/AsyncTCP"]
+	path = 3rdparty/AsyncTCP
+	url = https://github.com/ESP32Async/AsyncTCP.git
+[submodule "3rdparty/ESPAsyncWebServer"]
+	path = 3rdparty/ESPAsyncWebServer
+	url = https://github.com/ESP32Async/ESPAsyncWebServer.git
+[submodule "3rdparty/ESPping"]
+	path = 3rdparty/ESPping
+	url = https://github.com/dvarrel/ESPping.git
+[submodule "3rdparty/AsyncPersWiFiManager"]
+	path = 3rdparty/AsyncPersWiFiManager
+	url = https://github.com/sfambach/AsyncPersWiFiManager.git
+[submodule "3rdparty/esp8266-oled-ssd1306"]
+	path = 3rdparty/esp8266-oled-ssd1306
+	url = https://github.com/ThingPulse/esp8266-oled-ssd1306.git

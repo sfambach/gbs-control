@@ -1,9 +1,8 @@
 #ifndef TV5725_H_
 #define TV5725_H_
 
+#include "config.h"
 #include "tw.h"
-
-#define GBS_ADDR 0x17 // 7 bit GBS I2C Address
 
 namespace detail
 {
