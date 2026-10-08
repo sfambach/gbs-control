@@ -399,7 +399,32 @@ const createIntervalChecks = () => {
 
 /* API services */
 
+/**
+ * send a single char command over the open websocket ("s<cmd>" / "u<cmd>"),
+ * this avoids a new tcp connection + http request on the ESP8266 per button press.
+ * returns false if the websocket isn't usable, the caller then falls back to http.
+ */
+const sendWsCommand = (type: string, link: string) => {
+  if (
+    link.length > 0 &&
+    GBSControl.isWsActive &&
+    GBSControl.ws &&
+    GBSControl.ws.readyState === 1
+  ) {
+    try {
+      GBSControl.ws.send(type + link.charAt(0));
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+  return false;
+};
+
 const loadDoc = (link: string) => {
+  if (sendWsCommand("s", link)) {
+    return Promise.resolve();
+  }
   return fetch(
     `http://${GBSControl.serverIP}/sc?${link}&nocache=${new Date().getTime()}`
   );
@@ -412,6 +437,9 @@ const loadUser = (link: string) => {
     GBSControl.ui.terminal.scrollTop = GBSControl.ui.terminal.scrollHeight;
   }
 
+  if (sendWsCommand("u", link)) {
+    return Promise.resolve();
+  }
   return fetch(
     `http://${GBSControl.serverIP}/uc?${link}&nocache=${new Date().getTime()}`
   );
@@ -692,7 +720,12 @@ const displayWifiWarning = (mode: boolean) => {
 const updateTerminal = () => {
   if (GBSControl.queuedText.length > 0) {
     requestAnimationFrame(() => {
-      GBSControl.ui.terminal.value += GBSControl.queuedText;
+      let text = GBSControl.ui.terminal.value + GBSControl.queuedText;
+      // keep the textarea small, large ones make every append slow (mobile browsers)
+      if (text.length > 30000) {
+        text = text.substring(text.length - 20000);
+      }
+      GBSControl.ui.terminal.value = text;
       GBSControl.ui.terminal.scrollTop = GBSControl.ui.terminal.scrollHeight;
       GBSControl.queuedText = "";
     });

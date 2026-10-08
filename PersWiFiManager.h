@@ -16,6 +16,9 @@
 #include <DNSServer.h>
 
 #define WIFI_CONNECT_TIMEOUT 45
+// in AP mode with stored credentials: retry the stored network every .._INTERVAL for .._DURATION seconds
+#define WIFI_AP_RETRY_INTERVAL 60
+#define WIFI_AP_RETRY_DURATION 15
 
 class PersWiFiManager
 {
@@ -52,6 +55,10 @@ private:
 
     bool _connectNonBlock;
     unsigned long _connectStartTime;
+    unsigned long _apRetryTime = 0; // != 0: AP mode fallback active, time of last retry change
+    bool _apRetrying = false;       // currently trying the stored network (AP + STA)
+
+    void handleApRetry();
 
     WiFiChangeHandlerFunction _connectHandler;
     WiFiChangeHandlerFunction _apHandler;

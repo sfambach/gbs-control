@@ -220,54 +220,84 @@ String slotIndexMap = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz01234
 char serialCommand;               // Serial / Web Server commands
 char userCommand;               // Serial / Web Server commands
 static uint8_t lastSegment = 0xFF; // GBS segment for direct access
+
+#if ENABLE_WIFI
+// Commands from the web ui (http /sc, /uc or websocket) are queued here, so a command that
+// arrives while loop() is busy (preset change, sync watcher, ...) is no longer overwritten or lost.
+// Producer: wifi / async tcp callbacks, consumer: loop(). Both run in the same (non preemptive)
+// context on ESP8266, so a plain ring buffer is enough.
+struct WebCommand
+{
+    char type; // 's' = serialCommand, 'u' = userCommand
+    char cmd;
+};
+static constexpr uint8_t WEB_CMD_QUEUE_LEN = 16;
+static WebCommand webCmdQueue[WEB_CMD_QUEUE_LEN];
+static volatile uint8_t webCmdHead = 0;
+static volatile uint8_t webCmdTail = 0;
+
+static void queueWebCommand(char type, char cmd)
+{
+    uint8_t next = (webCmdHead + 1) % WEB_CMD_QUEUE_LEN;
+    if (next == webCmdTail) {
+        return; // full, drop (same as the old behaviour of a lost command)
+    }
+    webCmdQueue[webCmdHead].type = type;
+    webCmdQueue[webCmdHead].cmd = cmd;
+    webCmdHead = next;
+}
+
+// hand the next queued command to loop(), only when no other command is pending
+static void dequeueWebCommand()
+{
+    if (serialCommand != '@' || userCommand != '@' || webCmdTail == webCmdHead) {
+        return;
+    }
+    WebCommand c = webCmdQueue[webCmdTail];
+    webCmdTail = (webCmdTail + 1) % WEB_CMD_QUEUE_LEN;
+    if (c.type == 's') {
+        serialCommand = c.cmd;
+    } else {
+        userCommand = c.cmd;
+    }
+}
+#endif
 //uint8_t globalDelay; // used for dev / debug
 
 #if defined(ESP8266) && ENABLE_WIFI
 // serial mirror class for websocket logs
+// Output for the web ui is collected in a small buffer and sent as one websocket frame
+// from handleWiFi() (or when the buffer is full), instead of one frame per print() call.
+// Sending happens only at points where the wifi stack was serviced before, so no new
+// work is added inside timing critical code.
 class SerialMirror : public Stream
 {
+public:
+    static constexpr size_t BUF_LEN = 512;
+    static constexpr unsigned long FLUSH_INTERVAL_MS = 40;
+
     size_t write(const uint8_t *data, size_t size)
     {
-        if (ESP.getFreeHeap() > 20000) {
-            webSocket.broadcastTXT(data, size);
-        } else {
-            webSocket.disconnect();
-        }
+        bufferForWeb(data, size);
         Serial.write(data, size);
         return size;
     }
 
     size_t write(const char *data, size_t size)
     {
-        if (ESP.getFreeHeap() > 20000) {
-            webSocket.broadcastTXT(data, size);
-        } else {
-            webSocket.disconnect();
-        }
-        Serial.write(data, size);
-        return size;
+        return write((const uint8_t *)data, size);
     }
 
     size_t write(uint8_t data)
     {
-        if (ESP.getFreeHeap() > 20000) {
-            webSocket.broadcastTXT(&data, 1);
-        } else {
-            webSocket.disconnect();
-        }
+        bufferForWeb(&data, 1);
         Serial.write(data);
         return 1;
     }
 
     size_t write(char data)
     {
-        if (ESP.getFreeHeap() > 20000) {
-            webSocket.broadcastTXT(&data, 1);
-        } else {
-            webSocket.disconnect();
-        }
-        Serial.write(data);
-        return 1;
+        return write((uint8_t)data);
     }
 
     int available()
@@ -282,7 +312,57 @@ class SerialMirror : public Stream
     {
         return -1;
     }
-    void flush() {}
+    void flush()
+    {
+        sendBuffered();
+    }
+
+    // called regularly from handleWiFi()
+    void flushIfDue()
+    {
+        if (len > 0 && (millis() - lastFlush) >= FLUSH_INTERVAL_MS) {
+            sendBuffered();
+        }
+    }
+
+private:
+    uint8_t buf[BUF_LEN];
+    size_t len = 0;
+    unsigned long lastFlush = 0;
+
+    void bufferForWeb(const uint8_t *data, size_t size)
+    {
+        if (webSocket.connectedClients(false) == 0) {
+            len = 0; // nobody listening, don't spend time on it
+            return;
+        }
+        while (size > 0) {
+            size_t chunk = BUF_LEN - len;
+            if (chunk > size) {
+                chunk = size;
+            }
+            memcpy(buf + len, data, chunk);
+            len += chunk;
+            data += chunk;
+            size -= chunk;
+            if (len == BUF_LEN) {
+                sendBuffered();
+            }
+        }
+    }
+
+    void sendBuffered()
+    {
+        if (len > 0) {
+            if (ESP.getFreeHeap() > 20000) {
+                webSocket.broadcastTXT(buf, len);
+            } else {
+                webSocket.disconnect();
+            }
+            len = 0;
+        }
+        lastFlush = millis();
+    }
 };
 
 SerialMirror SerialM;
@@ -2875,6 +2955,13 @@ boolean applyBestHTotal(uint16_t bestHTotal)
 
     if (GBS::GBS_OPTION_PALFORCED60_ENABLED::read() == 1) {
         // source is 50Hz, preset has to stay at 60Hz: return
+        return true;
+    }
+
+    if (uopt->PalForce60 && GBS::GBS_OPTION_SCALING_RGBHV::read() == 1) {
+        // same option for upscaled RGBHV sources (e.g. DOS 70Hz): many displays and capture devices
+        // accept the upscaled resolutions only at 60Hz, so keep the preset frame rate
+        SerialM.println(F("HTotal Adjust skipped (force 60Hz)"));
         return true;
     }
 
@@ -7245,7 +7332,7 @@ void setup()
 #endif
     rto->webServerStarted = false; // make sure this is set
 
-    Serial.begin(115200); // Arduino IDE Serial Monitor requires the same 115200 bauds!
+    Serial.begin(921600); // serial monitor must use the same speed (platformio.ini: monitor_speed)
     Serial.setTimeout(10);
 
     // millis() at this point: typically 65ms
@@ -7764,19 +7851,30 @@ void updateWebSocketData()
 void handleWiFi(boolean instant)
 {
     static unsigned long lastTimePing = millis();
+    static bool pingSent = false;
     if (rto->webServerEnabled && rto->webServerStarted) {
         MDNS.update();
         persWM.handleWiFi(); // if connected, returns instantly. otherwise it reconnects or opens AP
         dnsServer.processNextRequest();
+        // buffered log output for the web ui terminal; right away after a command
+        if (instant) {
+            SerialM.flush();
+        } else {
+            SerialM.flushIfDue();
+        }
 
-        if ((millis() - lastTimePing) > 953) { // slightly odd value so not everything happens at once
+        // slightly odd value so not everything happens at once
+        // (only once per cycle, this used to ping on every loop pass between 953 and 973 ms)
+        if (!pingSent && (millis() - lastTimePing) > 953) {
             webSocket.broadcastPing();
+            pingSent = true;
         }
         if (((millis() - lastTimePing) > 973) || instant) {
             if ((webSocket.connectedClients(false) > 0) || instant) { // true = with compliant ping
                 updateWebSocketData();
             }
             lastTimePing = millis();
+            pingSent = false;
         }
     }
 
@@ -7788,6 +7886,38 @@ void handleWiFi(boolean instant)
 #else
 void updateWebSocketData() {}
 void handleWiFi(boolean) {}
+#endif
+
+#ifdef LOOP_DIAG
+// diagnostic only (env d1_mini_diag): measures loop / section durations, prints every 3 s
+struct LoopDiag {
+    uint32_t loops = 0, loopMax = 0, loopSum = 0, ftlCalls = 0, ftlMax = 0, swCalls = 0, swMax = 0, wifiMax = 0;
+    uint32_t lastPrint = 0;
+    uint32_t firstEdgeMaxUs = 0, firstEdgeOver60 = 0;
+    uint32_t sampOk = 0, sampFail = 0, sampFailFirstEdge = 0, sampFailMaxUs = 0, sampFailToggles = 0, sampOkMaxUs = 0;
+} loopDiag;
+void diagSampleFail(uint32_t us, uint32_t toggles, bool gotFirstEdge)
+{
+    loopDiag.sampFail++;
+    if (gotFirstEdge) loopDiag.sampFailFirstEdge++;
+    if (us > loopDiag.sampFailMaxUs) loopDiag.sampFailMaxUs = us;
+    loopDiag.sampFailToggles += toggles;
+}
+void diagSampleOk(uint32_t us, uint32_t firstEdgeUs)
+{
+    if (firstEdgeUs > loopDiag.firstEdgeMaxUs) loopDiag.firstEdgeMaxUs = firstEdgeUs;
+    if (firstEdgeUs > 60000 && firstEdgeUs < 10000000) { // ignore ccount wrap artefacts
+        loopDiag.firstEdgeOver60++;
+        Serial.printf("[diag] !!! first edge only after %u ms (would fail with 60 ms abort)\n", firstEdgeUs / 1000);
+    }
+    loopDiag.sampOk++;
+    if (us > loopDiag.sampOkMaxUs) loopDiag.sampOkMaxUs = us;
+}
+#define DIAG_T0(name) uint32_t name = micros()
+#define DIAG_MAX(var, t0) { uint32_t d_ = micros() - (t0); if (d_ > loopDiag.var) loopDiag.var = d_; }
+#else
+#define DIAG_T0(name)
+#define DIAG_MAX(var, t0)
 #endif
 
 void myLog(char const* type, char command) {
@@ -7830,7 +7960,10 @@ void loop()
     }
 #endif
 
+    DIAG_T0(diagLoopStart);
+    DIAG_T0(diagWifi);
     handleWiFi(0); // WiFi + OTA + WS + MDNS, checks for server enabled + started
+    DIAG_MAX(wifiMax, diagWifi);
 
     // is there a command from Terminal or web ui?
     // Serial takes precedence
@@ -7842,6 +7975,11 @@ void loop()
         discardSerialRxData();
         serialCommand = ' ';
     }
+#if ENABLE_WIFI
+    if (inputStage == 0) {
+        dequeueWebCommand(); // next web ui command, if nothing else is pending
+    }
+#endif
     if (serialCommand != '@') {
         // multistage with bad characters?
         if (inputStage > 0) {
@@ -8722,6 +8860,10 @@ void loop()
         handleWiFi(1);
     }
 
+    DIAG_T0(diagFtl);
+#ifdef LOOP_DIAG
+    uint32_t diagFtlBefore = loopDiag.ftlCalls;
+#endif
     // run FrameTimeLock if enabled
     if (uopt->enableFrameTimeLock && rto->sourceDisconnected == false && rto->autoBestHtotalEnabled &&
         rto->syncWatcherEnabled && FrameSync::ready() && millis() - lastVsyncLock > FrameSyncAttrs::lockInterval && rto->continousStableCounter > 20 && rto->noSyncCounter == 0)
@@ -8752,8 +8894,14 @@ void loop()
                 GBS::TEST_BUS_SEL::write(debug_backup);
             }
         }
+#ifdef LOOP_DIAG
+        loopDiag.ftlCalls++;
+#endif
         lastVsyncLock = millis();
     }
+#ifdef LOOP_DIAG
+    if (loopDiag.ftlCalls != diagFtlBefore) DIAG_MAX(ftlMax, diagFtl);
+#endif
 
     if (rto->syncWatcherEnabled && rto->boardHasPower) {
         if ((millis() - lastTimeInterruptClear) > 3000) {
@@ -8776,6 +8924,10 @@ void loop()
     //    unfreezeVideo();
     //}
 
+    DIAG_T0(diagSw);
+#ifdef LOOP_DIAG
+    uint32_t diagSwBefore = loopDiag.swCalls;
+#endif
     // syncwatcher polls SP status. when necessary, initiates adjustments or preset changes
     if (rto->sourceDisconnected == false && rto->syncWatcherEnabled == true && (millis() - lastTimeSyncWatcher) > 20) {
         runSyncWatcher();
@@ -8800,6 +8952,14 @@ void loop()
             }
         }
     }
+
+#ifdef LOOP_DIAG
+    if (lastTimeSyncWatcher == millis()) { // watcher ran in this pass
+        loopDiag.swCalls++;
+        DIAG_MAX(swMax, diagSw);
+    }
+    (void)diagSwBefore;
+#endif
 
     // init frame sync + besthtotal routine
     if (rto->autoBestHtotalEnabled && !FrameSync::ready() && rto->syncWatcherEnabled) {
@@ -8954,6 +9114,58 @@ void loop()
             }
         }
     }
+
+#ifdef LOOP_DIAG
+    {
+        uint32_t d = micros() - diagLoopStart;
+        loopDiag.loops++;
+        loopDiag.loopSum += d;
+        if (d > loopDiag.loopMax) loopDiag.loopMax = d;
+        if (millis() - loopDiag.lastPrint >= 3000) {
+            Serial.printf("[diag] loops:%u avg:%uus max:%ums | wifi max:%ums | syncw n:%u max:%ums | ftl n:%u max:%ums | rssi:%d heap:%u\n",
+                loopDiag.loops, loopDiag.loops ? loopDiag.loopSum / loopDiag.loops : 0, loopDiag.loopMax / 1000,
+                loopDiag.wifiMax / 1000, loopDiag.swCalls, loopDiag.swMax / 1000, loopDiag.ftlCalls, loopDiag.ftlMax / 1000,
+                WiFi.RSSI(), ESP.getFreeHeap());
+            Serial.printf("[diag] first edge max:%ums, over 60ms:%u\n", loopDiag.firstEdgeMaxUs / 1000, loopDiag.firstEdgeOver60);
+            Serial.printf("[diag] D6 samples ok:%u (max %ums) fail:%u (max %ums, first edge seen:%u, D6 level changes while waiting:%u)\n",
+                loopDiag.sampOk, loopDiag.sampOkMaxUs / 1000, loopDiag.sampFail, loopDiag.sampFailMaxUs / 1000,
+                loopDiag.sampFailFirstEdge, loopDiag.sampFailToggles);
+            {
+                // D6 level without / with internal pull-up, plus GBS debug output settings
+                uint32_t lvlIn = digitalRead(DEBUG_IN_PIN);
+                pinMode(DEBUG_IN_PIN, INPUT_PULLUP);
+                delayMicroseconds(100);
+                uint32_t lvlPu = digitalRead(DEBUG_IN_PIN);
+                uint32_t togglesPu = 0, last = lvlPu, t0 = micros();
+                while (micros() - t0 < 30000) { // 30 ms, more than one vsync period
+                    uint32_t l = digitalRead(DEBUG_IN_PIN);
+                    if (l != last) { last = l; togglesPu++; }
+                }
+                pinMode(DEBUG_IN_PIN, INPUT);
+                Serial.printf("[diag] D6 level input:%u pullup:%u (changes in 30ms with pullup:%u) | PAD_BOUT_EN:%u TEST_BUS_SEL:0x%02x\n",
+                    lvlIn, lvlPu, togglesPu, GBS::PAD_BOUT_EN::read(), GBS::TEST_BUS_SEL::read());
+                // independent of the input: select the output vsync (VDS, always generated) on the debug pin
+                uint8_t tbBackup = GBS::TEST_BUS_SEL::read();
+                uint8_t boutBackup = GBS::PAD_BOUT_EN::read();
+                GBS::PAD_BOUT_EN::write(1);
+                GBS::TEST_BUS_SEL::write(0x2);
+                delay(2);
+                uint32_t togglesOut = 0;
+                last = digitalRead(DEBUG_IN_PIN);
+                t0 = micros();
+                while (micros() - t0 < 60000) { // 60 ms, a few output frames
+                    uint32_t l = digitalRead(DEBUG_IN_PIN);
+                    if (l != last) { last = l; togglesOut++; }
+                }
+                GBS::TEST_BUS_SEL::write(tbBackup);
+                GBS::PAD_BOUT_EN::write(boutBackup);
+                Serial.printf("[diag] D6 with OUTPUT vsync selected (TEST_BUS_SEL=0x02): changes in 60ms:%u (expect ~6-10 at 50-85 Hz)\n", togglesOut);
+            }
+            loopDiag = LoopDiag();
+            loopDiag.lastPrint = millis();
+        }
+    }
+#endif
 
 #ifdef HAVE_PINGER_LIBRARY
     // periodic pings for debugging WiFi issues
@@ -9584,10 +9796,26 @@ void startWebserver()
     });
 
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+        // the page is ~170kB, let the browser cache it and only revalidate with a tiny request.
+        // the ETag changes with every firmware build, so an updated web ui is always loaded.
+        static String etag;
+        if (etag.length() == 0) {
+            etag = String("\"") + webui_html_len + "-" + __DATE__ + "-" + __TIME__ + "\"";
+            etag.replace(" ", "_");
+        }
+        if (request->hasHeader("If-None-Match") && request->header("If-None-Match") == etag) {
+            AsyncWebServerResponse *response = request->beginResponse(304);
+            response->addHeader("ETag", etag);
+            response->addHeader("Cache-Control", "no-cache");
+            request->send(response);
+            return;
+        }
         //Serial.println("sending web page");
         if (ESP.getFreeHeap() > 10000) {
             AsyncWebServerResponse *response = request->beginResponse_P(200, "text/html", webui_html, webui_html_len);
             response->addHeader("Content-Encoding", "gzip");
+            response->addHeader("ETag", etag);
+            response->addHeader("Cache-Control", "no-cache");
             request->send(response);
         }
     });
@@ -9598,14 +9826,15 @@ void startWebserver()
             //Serial.print("got serial request params: ");
             //Serial.println(params);
             if (params > 0) {
-                AsyncWebParameter *p = request->getParam(0);
+                const AsyncWebParameter *p = request->getParam(0);
                 //Serial.println(p->name());
-                serialCommand = p->name().charAt(0);
+                char cmd = p->name().charAt(0);
 
                 // hack, problem with '+' command received via url param
-                if (serialCommand == ' ') {
-                    serialCommand = '+';
+                if (cmd == ' ') {
+                    cmd = '+';
                 }
+                queueWebCommand('s', cmd);
             }
             request->send(200); // reply
         }
@@ -9617,9 +9846,9 @@ void startWebserver()
             //Serial.print("got user request params: ");
             //Serial.println(params);
             if (params > 0) {
-                AsyncWebParameter *p = request->getParam(0);
+                const AsyncWebParameter *p = request->getParam(0);
                 //Serial.println(p->name());
-                userCommand = p->name().charAt(0);
+                queueWebCommand('u', p->name().charAt(0));
             }
             request->send(200); // reply
         }
@@ -9679,7 +9908,7 @@ void startWebserver()
             int params = request->params();
 
             if (params > 0) {
-                AsyncWebParameter *slotParam = request->getParam(0);
+                const AsyncWebParameter *slotParam = request->getParam(0);
                 String slotParamValue = slotParam->value();
                 char slotValue[2];
                 slotParamValue.toCharArray(slotValue, sizeof(slotValue));
@@ -9726,7 +9955,7 @@ void startWebserver()
                 }
 
                 // index param
-                AsyncWebParameter *slotIndexParam = request->getParam(0);
+                const AsyncWebParameter *slotIndexParam = request->getParam(0);
                 String slotIndexString = slotIndexParam->value();
                 uint8_t slotIndex = lowByte(slotIndexString.toInt());
                 if (slotIndex >= SLOTS_TOTAL) {
@@ -9734,7 +9963,7 @@ void startWebserver()
                 }
 
                 // name param
-                AsyncWebParameter *slotNameParam = request->getParam(1);
+                const AsyncWebParameter *slotNameParam = request->getParam(1);
                 String slotName = slotNameParam->value();
 
                 char emptySlotName[25] = "                        ";
@@ -9764,7 +9993,7 @@ void startWebserver()
     server.on("/slot/remove", HTTP_GET, [](AsyncWebServerRequest *request) {
         bool result = false;
         int params = request->params();
-        AsyncWebParameter *p = request->getParam(0);
+        const AsyncWebParameter *p = request->getParam(0);
         char param = p->name().charAt(0);
         if (params > 0)
         {
@@ -9935,7 +10164,13 @@ void startWebserver()
         request->send(200, "application/json", result ? "true" : "false");
     });
 
-    //webSocket.onEvent(webSocketEvent);
+    // commands over the already open websocket: "s<cmd>" = serialCommand, "u<cmd>" = userCommand
+    // saves a new tcp connection + http request per button press
+    webSocket.onEvent([](uint8_t num, WStype_t type, uint8_t *payload, size_t length) {
+        if (type == WStype_TEXT && length == 2 && (payload[0] == 's' || payload[0] == 'u')) {
+            queueWebCommand((char)payload[0], (char)payload[1]);
+        }
+    });
 
     persWM.setConnectNonBlock(true);
     if (WiFi.SSID().length() == 0) {

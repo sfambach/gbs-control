@@ -49,8 +49,42 @@ bool PersWiFiManager::attemptConnection(const String &ssid, const String &pass)
 
 } //attemptConnection
 
+// AP mode fallback: the original code never tried the stored network again, so after a failed
+// connect at boot (e.g. "no AP found") the device stayed offline until the next reboot.
+void PersWiFiManager::handleApRetry()
+{
+    if (_apRetrying) {
+        if (WiFi.status() == WL_CONNECTED) {
+            _apRetrying = false;
+            _apRetryTime = 0;
+            _dnsServer->stop();
+            WiFi.mode(WIFI_STA); // connected again, AP no longer needed
+            if (_connectHandler)
+                _connectHandler();
+        } else if ((millis() - _apRetryTime) > (1000UL * WIFI_AP_RETRY_DURATION)) {
+            _apRetrying = false;
+            _apRetryTime = millis();
+            WiFi.disconnect(false); // stop trying, keep stored credentials
+            WiFi.mode(WIFI_AP);
+        }
+    } else if ((millis() - _apRetryTime) > (1000UL * WIFI_AP_RETRY_INTERVAL)) {
+        _apRetryTime = millis();
+        // don't disturb someone who is using the AP (scanning switches channels)
+        if (WiFi.softAPgetStationNum() == 0) {
+            _apRetrying = true;
+            WiFi.mode(WIFI_AP_STA);
+            WiFi.begin();
+        }
+    }
+}
+
 void PersWiFiManager::handleWiFi()
 {
+    if (_apRetryTime) {
+        handleApRetry();
+        return;
+    }
+
     if (!_connectStartTime)
         return;
 
@@ -65,6 +99,9 @@ void PersWiFiManager::handleWiFi()
     if ((WiFi.status() == WL_CONNECT_FAILED) || ((WiFi.status() != WL_CONNECTED) && ((millis() - _connectStartTime) > (1000 * WIFI_CONNECT_TIMEOUT)))) {
         startApMode();
         _connectStartTime = 0; //reset connect start time
+        if (WiFi.SSID().length()) {
+            _apRetryTime = millis(); // stored network exists: keep retrying it in the background
+        }
     }
 
 } //handleWiFi

@@ -29,9 +29,24 @@
 #define fsDebugPrintf(...)
 #endif
 
+#ifdef LOOP_DIAG
+void diagSampleFail(uint32_t us, uint32_t toggles, bool gotFirstEdge);
+void diagSampleOk(uint32_t us, uint32_t firstEdgeUs);
+#endif
+
 namespace MeasurePeriod {
     volatile uint32_t stopTime, startTime;
     volatile uint32_t armed;
+
+    // Without any edge after this time the debug pin has no signal, so give up early instead of
+    // blocking loop() (and wifi) for ~0.5 s per measurement. Only the "no edge at all" case is
+    // affected, a started measurement runs as before.
+    // Measured: right after input detection the first edge can take up to ~65 ms (one vsync
+    // period would be < 22 ms), so keep a wide margin.
+#ifndef FIRST_EDGE_TIMEOUT_US
+#define FIRST_EDGE_TIMEOUT_US 200000
+#endif
+    static constexpr uint32_t firstEdgeTimeoutUs = FIRST_EDGE_TIMEOUT_US;
 
     void _risingEdgeISR_prepare();
     void _risingEdgeISR_measure();
@@ -122,9 +137,16 @@ private:
         yield();
         ESP.wdtDisable();
         MeasurePeriod::start();
+        const uint32_t firstEdgeWaitStart = micros();
 
         // typical: 300000 at 80MHz, 600000 at 160MHz
         for (uint32_t i = 0; i < 3000000; i++) {
+            // check only every 1024 passes, keeps the loop as fast as before
+            if ((i & 0x3ff) == 0 && MeasurePeriod::startTime == 0 &&
+                (micros() - firstEdgeWaitStart) > MeasurePeriod::firstEdgeTimeoutUs) {
+                detachInterrupt(DEBUG_IN_PIN); // no signal, stop waiting for the first edge
+                break;
+            }
             if (MeasurePeriod::armed) {
                 MeasurePeriod::armed = 0;
                 delay(7);
@@ -370,9 +392,21 @@ public:
         yield();
         ESP.wdtDisable();
         MeasurePeriod::start();
+        const uint32_t firstEdgeWaitStart = micros();
+#ifdef LOOP_DIAG
+        uint32_t diagT0 = micros();
+        uint32_t diagCc0 = ESP.getCycleCount();
+        uint32_t diagLevel = digitalRead(DEBUG_IN_PIN), diagToggles = 0;
+#endif
 
         // typical: 300000 at 80MHz, 600000 at 160MHz
         for (uint32_t i = 0; i < 3000000; i++) {
+            // check only every 1024 passes, keeps the loop as fast as before
+            if ((i & 0x3ff) == 0 && MeasurePeriod::startTime == 0 &&
+                (micros() - firstEdgeWaitStart) > MeasurePeriod::firstEdgeTimeoutUs) {
+                detachInterrupt(DEBUG_IN_PIN); // no signal, stop waiting for the first edge
+                break;
+            }
             if (MeasurePeriod::armed) {
                 MeasurePeriod::armed = 0;
                 delay(7);
@@ -381,6 +415,13 @@ public:
             if (MeasurePeriod::stopTime > 0) {
                 break;
             }
+#ifdef LOOP_DIAG
+            uint32_t l = digitalRead(DEBUG_IN_PIN);
+            if (l != diagLevel) {
+                diagLevel = l;
+                diagToggles++;
+            }
+#endif
         }
         *start = MeasurePeriod::startTime;
         *stop = MeasurePeriod::stopTime;
@@ -389,8 +430,14 @@ public:
 
         if ((*start >= *stop) || *stop == 0 || *start == 0) {
             // ESP.getCycleCount() overflow oder no pulse, just fail this round
+#ifdef LOOP_DIAG
+            diagSampleFail(micros() - diagT0, diagToggles, *start != 0);
+#endif
             return false;
         }
+#ifdef LOOP_DIAG
+        diagSampleOk(micros() - diagT0, (*start - diagCc0) / ESP.getCpuFreqMHz());
+#endif
 
         return true;
     }

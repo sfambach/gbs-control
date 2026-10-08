@@ -1604,11 +1604,12 @@ section[name="alert"] {
               </tr>
               <tr>
                 <td>
-                  Output Frame Rate: Force PAL 50Hz to 60Hz
+                  Output Frame Rate: Force 60Hz (PAL 50Hz, upscaled VGA &gt; 60Hz)
                   <!-- prettier-ignore -->
                   <ul class="gbs-help">
                     <li>If your TV does not support 50Hz sources (displaying unknown format, no matter the preset), try this option.
                     </li>
+                    <li>Also keeps upscaled VGA sources above 60Hz (e.g. DOS 70Hz) at the 60Hz of the preset, for displays and capture devices that only accept 60Hz at higher resolutions.</li>
                     <li>The frame rate will not be as smooth. Reboot required.</li>
                   </ul>
                 </td>
@@ -2535,7 +2536,30 @@ const createIntervalChecks = () => {
     GBSControl.updateTerminalTimer = setInterval(updateTerminal, 50);
 };
 /* API services */
+/**
+ * send a single char command over the open websocket ("s<cmd>" / "u<cmd>"),
+ * this avoids a new tcp connection + http request on the ESP8266 per button press.
+ * returns false if the websocket isn't usable, the caller then falls back to http.
+ */
+const sendWsCommand = (type, link) => {
+    if (link.length > 0 &&
+        GBSControl.isWsActive &&
+        GBSControl.ws &&
+        GBSControl.ws.readyState === 1) {
+        try {
+            GBSControl.ws.send(type + link.charAt(0));
+            return true;
+        }
+        catch (e) {
+            return false;
+        }
+    }
+    return false;
+};
 const loadDoc = (link) => {
+    if (sendWsCommand("s", link)) {
+        return Promise.resolve();
+    }
     return fetch(`http://${GBSControl.serverIP}/sc?${link}&nocache=${new Date().getTime()}`);
 };
 const loadUser = (link) => {
@@ -2543,6 +2567,9 @@ const loadUser = (link) => {
         GBSControl.isWsActive = false;
         GBSControl.ui.terminal.value += "\nRestart\n";
         GBSControl.ui.terminal.scrollTop = GBSControl.ui.terminal.scrollHeight;
+    }
+    if (sendWsCommand("u", link)) {
+        return Promise.resolve();
     }
     return fetch(`http://${GBSControl.serverIP}/uc?${link}&nocache=${new Date().getTime()}`);
 };
@@ -2770,7 +2797,12 @@ const displayWifiWarning = (mode) => {
 const updateTerminal = () => {
     if (GBSControl.queuedText.length > 0) {
         requestAnimationFrame(() => {
-            GBSControl.ui.terminal.value += GBSControl.queuedText;
+            let text = GBSControl.ui.terminal.value + GBSControl.queuedText;
+            // keep the textarea small, large ones make every append slow (mobile browsers)
+            if (text.length > 30000) {
+                text = text.substring(text.length - 20000);
+            }
+            GBSControl.ui.terminal.value = text;
             GBSControl.ui.terminal.scrollTop = GBSControl.ui.terminal.scrollHeight;
             GBSControl.queuedText = "";
         });
