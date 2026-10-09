@@ -1164,6 +1164,92 @@ void fastSogAdjust()
     }
 }
 
+// RGBHV upscaling: apply the preset for rto->videoStandardInput (1 - 4) and set up the sync processor
+// for scaling, then continue in mode 14. Shared by runSyncWatcher() when upscaling starts and when the
+// source changes between 15 kHz / 31 kHz style modes while upscaling.
+// settleAfterIcpChange: wait 40 ms after lowering the PLLAD charge pump (only done when upscaling starts).
+static void applyRgbhvUpscalePreset(boolean needPostAdjust, boolean settleAfterIcpChange)
+{
+    if (uopt->presetPreference == 10) {
+        uopt->presetPreference = Output960P; // fix presetPreference which can be "bypass"
+    }
+
+    applyPresets(rto->videoStandardInput);
+
+    GBS::GBS_OPTION_SCALING_RGBHV::write(1);
+    GBS::IF_INI_ST::write(16);   // fixes pal(at least) interlace
+    GBS::SP_SOG_P_ATO::write(1); // 5_20 1 auto SOG polarity (now "hpw" should never be close to "ht")
+
+    GBS::SP_SDCS_VSST_REG_L::write(2); // 5_3f
+    GBS::SP_SDCS_VSSP_REG_L::write(0); // 5_40
+
+    rto->coastPositionIsSet = rto->clampPositionIsSet = 0;
+    rto->videoStandardInput = 14;
+
+    if (GBS::PLLAD_ICP::read() >= 6) {
+        GBS::PLLAD_ICP::write(5); // reduce charge pump current for more general use
+        latchPLLAD();
+        if (settleAfterIcpChange) {
+            delay(40);
+        }
+    }
+
+    updateSpDynamic(1);
+    if (rto->syncTypeCsync == false) {
+        GBS::SP_SOG_MODE::write(0);
+        GBS::SP_CLAMP_MANUAL::write(1);
+        GBS::SP_NO_COAST_REG::write(1);
+    } else {
+        GBS::SP_SOG_MODE::write(1);
+        GBS::SP_H_CST_ST::write(0x10); // 5_4d  // set some default values
+        GBS::SP_H_CST_SP::write(0x80); // will be updated later
+        GBS::SP_H_PROTECT::write(1);   // some modes require this (or invert SOG)
+    }
+    delay(300);
+
+    if (rto->extClockGenDetected) {
+        // switch to ext clock
+        if (!rto->outModeHdBypass) {
+            if (GBS::PLL648_CONTROL_01::read() != 0x35 && GBS::PLL648_CONTROL_01::read() != 0x75) {
+                // first store original in an option byte in 1_2D
+                GBS::GBS_PRESET_DISPLAY_CLOCK::write(GBS::PLL648_CONTROL_01::read());
+                // enable and switch input
+                Si.enable(0);
+                delayMicroseconds(800);
+                GBS::PLL648_CONTROL_01::write(0x75);
+            }
+        }
+        // sync clocks now
+        externalClockGenSyncInOutRate();
+    }
+
+    if (needPostAdjust) {
+        // base preset was "3" / no line doubling
+        // info: actually the position needs to be adjusted based on hor. freq or "h:" value (todo!)
+        GBS::IF_HB_ST2::write(0x08);  // patches
+        GBS::IF_HB_SP2::write(0x68);  // image
+        GBS::IF_HBIN_SP::write(0x50); // position
+        if (rto->presetID == 0x05) {
+            GBS::IF_HB_ST2::write(0x480);
+            GBS::IF_HB_SP2::write(0x8E);
+        }
+
+        float sfr = getSourceFieldRate(0);
+        if (sfr >= 69.0) {
+            SerialM.println("source >= 70Hz");
+            // increase vscale; vscale -= 57 seems to hit magic factor often
+            // 512 + 57 = 569 + 57 = 626 + 57 = 683
+            GBS::VDS_VSCALE::write(GBS::VDS_VSCALE::read() - 57);
+
+        } else {
+            // 50/60Hz, presumably
+            // adjust vposition
+            GBS::IF_VB_SP::write(8);
+            GBS::IF_VB_ST::write(6);
+        }
+    }
+}
+
 void runSyncWatcher()
 {
     if (!rto->boardHasPower) {
@@ -1823,84 +1909,8 @@ void runSyncWatcher()
                         }
                     }
 
-                    if (uopt->presetPreference == 10) {
-                        uopt->presetPreference = Output960P; // fix presetPreference which can be "bypass"
-                    }
-
                     activePresetLineCount = sourceLines;
-                    applyPresets(rto->videoStandardInput);
-
-                    GBS::GBS_OPTION_SCALING_RGBHV::write(1);
-                    GBS::IF_INI_ST::write(16);   // fixes pal(at least) interlace
-                    GBS::SP_SOG_P_ATO::write(1); // 5_20 1 auto SOG polarity (now "hpw" should never be close to "ht")
-
-                    GBS::SP_SDCS_VSST_REG_L::write(2); // 5_3f
-                    GBS::SP_SDCS_VSSP_REG_L::write(0); // 5_40
-
-                    rto->coastPositionIsSet = rto->clampPositionIsSet = 0;
-                    rto->videoStandardInput = 14;
-
-                    if (GBS::PLLAD_ICP::read() >= 6) {
-                        GBS::PLLAD_ICP::write(5); // reduce charge pump current for more general use
-                        latchPLLAD();
-                        delay(40);
-                    }
-
-                    updateSpDynamic(1);
-                    if (rto->syncTypeCsync == false) {
-                        GBS::SP_SOG_MODE::write(0);
-                        GBS::SP_CLAMP_MANUAL::write(1);
-                        GBS::SP_NO_COAST_REG::write(1);
-                    } else {
-                        GBS::SP_SOG_MODE::write(1);
-                        GBS::SP_H_CST_ST::write(0x10); // 5_4d  // set some default values
-                        GBS::SP_H_CST_SP::write(0x80); // will be updated later
-                        GBS::SP_H_PROTECT::write(1);   // some modes require this (or invert SOG)
-                    }
-                    delay(300);
-
-                    if (rto->extClockGenDetected) {
-                        // switch to ext clock
-                        if (!rto->outModeHdBypass) {
-                            if (GBS::PLL648_CONTROL_01::read() != 0x35 && GBS::PLL648_CONTROL_01::read() != 0x75) {
-                                // first store original in an option byte in 1_2D
-                                GBS::GBS_PRESET_DISPLAY_CLOCK::write(GBS::PLL648_CONTROL_01::read());
-                                // enable and switch input
-                                Si.enable(0);
-                                delayMicroseconds(800);
-                                GBS::PLL648_CONTROL_01::write(0x75);
-                            }
-                        }
-                        // sync clocks now
-                        externalClockGenSyncInOutRate();
-                    }
-
-                    // note: this is all duplicated below. unify!
-                    if (needPostAdjust) {
-                        // base preset was "3" / no line doubling
-                        // info: actually the position needs to be adjusted based on hor. freq or "h:" value (todo!)
-                        GBS::IF_HB_ST2::write(0x08);  // patches
-                        GBS::IF_HB_SP2::write(0x68);  // image
-                        GBS::IF_HBIN_SP::write(0x50); // position
-                        if (rto->presetID == 0x05) {
-                            GBS::IF_HB_ST2::write(0x480);
-                            GBS::IF_HB_SP2::write(0x8E);
-                        }
-
-                        float sfr = getSourceFieldRate(0);
-                        if (sfr >= 69.0) {
-                            SerialM.println("source >= 70Hz");
-                            // increase vscale; vscale -= 57 seems to hit magic factor often
-                            // 512 + 57 = 569 + 57 = 626 + 57 = 683
-                            GBS::VDS_VSCALE::write(GBS::VDS_VSCALE::read() - 57);
-
-                        } else {
-                            // 50/60Hz, presumably
-                            // adjust vposition
-                            GBS::IF_VB_SP::write(8);
-                            GBS::IF_VB_ST::write(6);
-                        }
-                    }
+                    applyRgbhvUpscalePreset(needPostAdjust, true);
                 }
             }
             // if currently in scaling RGB/HV, check for "SD" < > "EDTV" style source changes
@@ -1936,84 +1946,8 @@ void runSyncWatcher()
                             SerialM.println(F(" RGB/HV upscale mode base 31kHz"));
                         }
 
-                        if (uopt->presetPreference == 10) {
-                            uopt->presetPreference = Output960P; // fix presetPreference which can be "bypass"
-                        }
-
                         activePresetLineCount = sourceLines;
-                        applyPresets(rto->videoStandardInput);
-
-                        GBS::GBS_OPTION_SCALING_RGBHV::write(1);
-                        GBS::IF_INI_ST::write(16);   // fixes pal(at least) interlace
-                        GBS::SP_SOG_P_ATO::write(1); // 5_20 1 auto SOG polarity
-
-                        // adjust vposition
-                        GBS::SP_SDCS_VSST_REG_L::write(2); // 5_3f
-                        GBS::SP_SDCS_VSSP_REG_L::write(0); // 5_40
-
-                        rto->coastPositionIsSet = rto->clampPositionIsSet = 0;
-                        rto->videoStandardInput = 14;
-
-                        if (GBS::PLLAD_ICP::read() >= 6) {
-                            GBS::PLLAD_ICP::write(5); // reduce charge pump current for more general use
-                            latchPLLAD();
-                        }
-
-                        updateSpDynamic(1);
-                        if (rto->syncTypeCsync == false) {
-                            GBS::SP_SOG_MODE::write(0);
-                            GBS::SP_CLAMP_MANUAL::write(1);
-                            GBS::SP_NO_COAST_REG::write(1);
-                        } else {
-                            GBS::SP_SOG_MODE::write(1);
-                            GBS::SP_H_CST_ST::write(0x10); // 5_4d  // set some default values
-                            GBS::SP_H_CST_SP::write(0x80); // will be updated later
-                            GBS::SP_H_PROTECT::write(1);   // some modes require this (or invert SOG)
-                        }
-                        delay(300);
-
-                        if (rto->extClockGenDetected) {
-                            // switch to ext clock
-                            if (!rto->outModeHdBypass) {
-                                if (GBS::PLL648_CONTROL_01::read() != 0x35 && GBS::PLL648_CONTROL_01::read() != 0x75) {
-                                    // first store original in an option byte in 1_2D
-                                    GBS::GBS_PRESET_DISPLAY_CLOCK::write(GBS::PLL648_CONTROL_01::read());
-                                    // enable and switch input
-                                    Si.enable(0);
-                                    delayMicroseconds(800);
-                                    GBS::PLL648_CONTROL_01::write(0x75);
-                                }
-                            }
-                            // sync clocks now
-                            externalClockGenSyncInOutRate();
-                        }
-
-                        // note: this is all duplicated above. unify!
-                        if (needPostAdjust) {
-                            // base preset was "3" / no line doubling
-                            // info: actually the position needs to be adjusted based on hor. freq or "h:" value (todo!)
-                            GBS::IF_HB_ST2::write(0x08);  // patches
-                            GBS::IF_HB_SP2::write(0x68);  // image
-                            GBS::IF_HBIN_SP::write(0x50); // position
-                            if (rto->presetID == 0x05) {
-                                GBS::IF_HB_ST2::write(0x480);
-                                GBS::IF_HB_SP2::write(0x8E);
-                            }
-
-                            float sfr = getSourceFieldRate(0);
-                            if (sfr >= 69.0) {
-                                SerialM.println("source >= 70Hz");
-                                // increase vscale; vscale -= 57 seems to hit magic factor often
-                                // 512 + 57 = 569 + 57 = 626 + 57 = 683
-                                GBS::VDS_VSCALE::write(GBS::VDS_VSCALE::read() - 57);
-
-                            } else {
-                                // 50/60Hz, presumably
-                                // adjust vposition
-                                GBS::IF_VB_SP::write(8);
-                                GBS::IF_VB_ST::write(6);
-                            }
-                        }
+                        applyRgbhvUpscalePreset(needPostAdjust, false);
                     } else {
                         // was unstable, undo videoStandardInput change
                         rto->videoStandardInput = 14;
