@@ -2,6 +2,93 @@
 // part of the gbs-control sketch: all .ino files are concatenated into one translation unit
 // (gbs-control.ino first), so globals and types from gbs-control.ino are visible here.
 
+// preset files are stored per slot and detected video mode: "/preset_<name>.<slot>"
+// (order = order used when removing / shifting slots)
+struct PresetFile
+{
+    uint8_t videoMode;
+    const char *name;
+};
+static const PresetFile presetFiles[] = {
+    {1, "ntsc"}, {2, "pal"}, {3, "ntsc_480p"}, {4, "pal_576p"}, {5, "ntsc_720p"},
+    {6, "ntsc_1080p"}, {8, "medium_res"}, {14, "vga_upscale"}, {0, "unknown"},
+};
+static_assert(PRESET_FILE_COUNT == sizeof(presetFiles) / sizeof(presetFiles[0]), "update PRESET_FILE_COUNT");
+
+String presetFileNameAt(size_t index, Ascii8 slot)
+{
+    return String("/preset_") + presetFiles[index].name + "." + String((char)slot);
+}
+
+// file name for a video mode, empty if this video mode has no preset file
+String presetFileName(uint8_t videoMode, Ascii8 slot)
+{
+    for (size_t i = 0; i < PRESET_FILE_COUNT; i++) {
+        if (presetFiles[i].videoMode == videoMode) {
+            return presetFileNameAt(i, slot);
+        }
+    }
+    return String();
+}
+
+// slot metadata in SLOTS_FILE
+
+void initEmptySlots(SlotMetaArray &slots)
+{
+    for (int i = 0; i < SLOTS_TOTAL; i++) {
+        slots.slot[i].slot = i;
+        slots.slot[i].presetID = 0;
+        slots.slot[i].scanlines = 0;
+        slots.slot[i].scanlinesStrength = 0;
+        slots.slot[i].wantVdsLineFilter = false;
+        slots.slot[i].wantStepResponse = true;
+        slots.slot[i].wantPeaking = true;
+        char emptySlotName[25] = EMPTY_SLOT_NAME;
+        strncpy(slots.slot[i].name, emptySlotName, 25);
+    }
+}
+
+void writeSlots(const SlotMetaArray &slots)
+{
+    File f = SPIFFS.open(SLOTS_FILE, "w");
+    f.write((const byte *)&slots, sizeof(slots));
+    f.close();
+}
+
+// false if there is no slots file yet
+bool readSlots(SlotMetaArray &slots)
+{
+    File f = SPIFFS.open(SLOTS_FILE, "r");
+    if (!f) {
+        return false;
+    }
+    f.read((byte *)&slots, sizeof(slots));
+    f.close();
+    return true;
+}
+
+// read the slots file, create it with empty slots if it doesn't exist yet
+void readOrCreateSlots(SlotMetaArray &slots)
+{
+    if (!readSlots(slots)) {
+        initEmptySlots(slots);
+        writeSlots(slots);
+    }
+}
+
+// create the slots file with empty slots if it doesn't exist yet
+void ensureSlotsFile()
+{
+    File f = SPIFFS.open(SLOTS_FILE, "r");
+    if (f) {
+        f.close();
+        return;
+    }
+    SlotMetaArray slots;
+    initEmptySlots(slots);
+    writeSlots(slots);
+}
+
 #if defined(ESP8266)
 const uint8_t *loadPresetFromSPIFFS(byte forVideoMode)
 {
@@ -33,24 +120,9 @@ const uint8_t *loadPresetFromSPIFFS(byte forVideoMode)
     SerialM.print((char)slot);
     SerialM.print(": ");
 
-    if (forVideoMode == 1) {
-        f = SPIFFS.open("/preset_ntsc." + String((char)slot), "r");
-    } else if (forVideoMode == 2) {
-        f = SPIFFS.open("/preset_pal." + String((char)slot), "r");
-    } else if (forVideoMode == 3) {
-        f = SPIFFS.open("/preset_ntsc_480p." + String((char)slot), "r");
-    } else if (forVideoMode == 4) {
-        f = SPIFFS.open("/preset_pal_576p." + String((char)slot), "r");
-    } else if (forVideoMode == 5) {
-        f = SPIFFS.open("/preset_ntsc_720p." + String((char)slot), "r");
-    } else if (forVideoMode == 6) {
-        f = SPIFFS.open("/preset_ntsc_1080p." + String((char)slot), "r");
-    } else if (forVideoMode == 8) {
-        f = SPIFFS.open("/preset_medium_res." + String((char)slot), "r");
-    } else if (forVideoMode == 14) {
-        f = SPIFFS.open("/preset_vga_upscale." + String((char)slot), "r");
-    } else if (forVideoMode == 0) {
-        f = SPIFFS.open("/preset_unknown." + String((char)slot), "r");
+    String fileName = presetFileName(forVideoMode, slot);
+    if (fileName.length()) {
+        f = SPIFFS.open(fileName, "r");
     }
 
     if (!f) {
@@ -102,24 +174,9 @@ void savePresetToSPIFFS()
     SerialM.print(F("saving to preset slot "));
     SerialM.println(String((char)slot));
 
-    if (rto->videoStandardInput == 1) {
-        f = SPIFFS.open("/preset_ntsc." + String((char)slot), "w");
-    } else if (rto->videoStandardInput == 2) {
-        f = SPIFFS.open("/preset_pal." + String((char)slot), "w");
-    } else if (rto->videoStandardInput == 3) {
-        f = SPIFFS.open("/preset_ntsc_480p." + String((char)slot), "w");
-    } else if (rto->videoStandardInput == 4) {
-        f = SPIFFS.open("/preset_pal_576p." + String((char)slot), "w");
-    } else if (rto->videoStandardInput == 5) {
-        f = SPIFFS.open("/preset_ntsc_720p." + String((char)slot), "w");
-    } else if (rto->videoStandardInput == 6) {
-        f = SPIFFS.open("/preset_ntsc_1080p." + String((char)slot), "w");
-    } else if (rto->videoStandardInput == 8) {
-        f = SPIFFS.open("/preset_medium_res." + String((char)slot), "w");
-    } else if (rto->videoStandardInput == 14) {
-        f = SPIFFS.open("/preset_vga_upscale." + String((char)slot), "w");
-    } else if (rto->videoStandardInput == 0) {
-        f = SPIFFS.open("/preset_unknown." + String((char)slot), "w");
+    String fileName = presetFileName(rto->videoStandardInput, slot);
+    if (fileName.length()) {
+        f = SPIFFS.open(fileName, "w");
     }
 
     if (!f) {

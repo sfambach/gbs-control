@@ -40,6 +40,14 @@ void bypassModeSwitch_RGBHV();
 void loadDefaultUserOptions();
 
 // gbs_storage.ino
+static constexpr size_t PRESET_FILE_COUNT = 9; // entries in presetFiles[]
+String presetFileNameAt(size_t index, Ascii8 slot);
+String presetFileName(uint8_t videoMode, Ascii8 slot);
+void initEmptySlots(SlotMetaArray &slots);
+void writeSlots(const SlotMetaArray &slots);
+bool readSlots(SlotMetaArray &slots);
+void readOrCreateSlots(SlotMetaArray &slots);
+void ensureSlotsFile();
 #if defined(ESP8266)
 const uint8_t *loadPresetFromSPIFFS(byte forVideoMode);
 void savePresetToSPIFFS();

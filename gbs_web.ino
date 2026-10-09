@@ -256,29 +256,8 @@ void startWebserver()
 
     server.on("/bin/slots.bin", HTTP_GET, [](AsyncWebServerRequest *request) {
         if (ESP.getFreeHeap() > 10000) {
-            SlotMetaArray slotsObject;
-            File slotsBinaryFileRead = SPIFFS.open(SLOTS_FILE, "r");
-
-            if (!slotsBinaryFileRead) {
-                File slotsBinaryFileWrite = SPIFFS.open(SLOTS_FILE, "w");
-                for (int i = 0; i < SLOTS_TOTAL; i++) {
-                    slotsObject.slot[i].slot = i;
-                    slotsObject.slot[i].presetID = 0;
-                    slotsObject.slot[i].scanlines = 0;
-                    slotsObject.slot[i].scanlinesStrength = 0;
-                    slotsObject.slot[i].wantVdsLineFilter = false;
-                    slotsObject.slot[i].wantStepResponse = true;
-                    slotsObject.slot[i].wantPeaking = true;
-                    char emptySlotName[25] = "Empty                   ";
-                    strncpy(slotsObject.slot[i].name, emptySlotName, 25);
-                }
-                slotsBinaryFileWrite.write((byte *)&slotsObject, sizeof(slotsObject));
-                slotsBinaryFileWrite.close();
-            } else {
-                slotsBinaryFileRead.close();
-            }
-
-            request->send(SPIFFS, "/slots.bin", "application/octet-stream");
+            ensureSlotsFile();
+            request->send(SPIFFS, SLOTS_FILE, "application/octet-stream");
         }
     });
 
@@ -311,29 +290,7 @@ void startWebserver()
 
             if (params > 0) {
                 SlotMetaArray slotsObject;
-                File slotsBinaryFileRead = SPIFFS.open(SLOTS_FILE, "r");
-
-                if (slotsBinaryFileRead) {
-                    slotsBinaryFileRead.read((byte *)&slotsObject, sizeof(slotsObject));
-                    slotsBinaryFileRead.close();
-                } else {
-                    File slotsBinaryFileWrite = SPIFFS.open(SLOTS_FILE, "w");
-
-                    for (int i = 0; i < SLOTS_TOTAL; i++) {
-                        slotsObject.slot[i].slot = i;
-                        slotsObject.slot[i].presetID = 0;
-                        slotsObject.slot[i].scanlines = 0;
-                        slotsObject.slot[i].scanlinesStrength = 0;
-                        slotsObject.slot[i].wantVdsLineFilter = false;
-                        slotsObject.slot[i].wantStepResponse = true;
-                        slotsObject.slot[i].wantPeaking = true;
-                        char emptySlotName[25] = "Empty                   ";
-                        strncpy(slotsObject.slot[i].name, emptySlotName, 25);
-                    }
-
-                    slotsBinaryFileWrite.write((byte *)&slotsObject, sizeof(slotsObject));
-                    slotsBinaryFileWrite.close();
-                }
+                readOrCreateSlots(slotsObject);
 
                 // index param
                 const AsyncWebParameter *slotIndexParam = request->getParam(0);
@@ -359,9 +316,7 @@ void startWebserver()
                 slotsObject.slot[slotIndex].wantStepResponse = uopt->wantStepResponse;
                 slotsObject.slot[slotIndex].wantPeaking = uopt->wantPeaking;
 
-                File slotsBinaryOutputFile = SPIFFS.open(SLOTS_FILE, "w");
-                slotsBinaryOutputFile.write((byte *)&slotsObject, sizeof(slotsObject));
-                slotsBinaryOutputFile.close();
+                writeSlots(slotsObject);
 
                 result = true;
             }
@@ -374,10 +329,10 @@ void startWebserver()
     server.on("/slot/remove", HTTP_GET, [](AsyncWebServerRequest *request) {
         bool result = false;
         int params = request->params();
-        const AsyncWebParameter *p = request->getParam(0);
-        char param = p->name().charAt(0);
         if (params > 0)
         {
+            // fix: read the parameter only if there is one (was a null pointer access)
+            char param = request->getParam(0)->name().charAt(0);
             if (param == '0')
             {
                 SerialM.println("Wait...");
@@ -390,38 +345,29 @@ void startWebserver()
                 auto currentSlot = slotIndexMap.indexOf(slot);
 
                 SlotMetaArray slotsObject;
-                File slotsBinaryFileRead = SPIFFS.open(SLOTS_FILE, "r");
-                slotsBinaryFileRead.read((byte *)&slotsObject, sizeof(slotsObject));
-                slotsBinaryFileRead.close();
+                // fix: unknown slot or missing slots file would index outside of slotsObject
+                if (currentSlot < 0 || currentSlot >= SLOTS_TOTAL || !readSlots(slotsObject)) {
+                    request->send(200, "application/json", "false");
+                    return;
+                }
                 String slotName = slotsObject.slot[currentSlot].name;
 
                 // remove preset files
-                SPIFFS.remove("/preset_ntsc." + String((char)slot));
-                SPIFFS.remove("/preset_pal." + String((char)slot));
-                SPIFFS.remove("/preset_ntsc_480p." + String((char)slot));
-                SPIFFS.remove("/preset_pal_576p." + String((char)slot));
-                SPIFFS.remove("/preset_ntsc_720p." + String((char)slot));
-                SPIFFS.remove("/preset_ntsc_1080p." + String((char)slot));
-                SPIFFS.remove("/preset_medium_res." + String((char)slot));
-                SPIFFS.remove("/preset_vga_upscale." + String((char)slot));
-                SPIFFS.remove("/preset_unknown." + String((char)slot));
+                for (size_t i = 0; i < PRESET_FILE_COUNT; i++) {
+                    SPIFFS.remove(presetFileNameAt(i, slot));
+                }
 
                 uint8_t loopCount = 0;
                 uint8_t flag = 1;
-                while (flag != 0)
+                // fix: stop at the last slot (was writing past the end of slotsObject)
+                while (flag != 0 && (currentSlot + loopCount + 1) < SLOTS_TOTAL)
                 {
                     slot = slotIndexMap[currentSlot + loopCount];
                     nextSlot = slotIndexMap[currentSlot + loopCount + 1];
                     flag = 0;
-                    flag += SPIFFS.rename("/preset_ntsc." + String((char)(nextSlot)), "/preset_ntsc." + String((char)slot));
-                    flag += SPIFFS.rename("/preset_pal." + String((char)(nextSlot)), "/preset_pal." + String((char)slot));
-                    flag += SPIFFS.rename("/preset_ntsc_480p." + String((char)(nextSlot)), "/preset_ntsc_480p." + String((char)slot));
-                    flag += SPIFFS.rename("/preset_pal_576p." + String((char)(nextSlot)), "/preset_pal_576p." + String((char)slot));
-                    flag += SPIFFS.rename("/preset_ntsc_720p." + String((char)(nextSlot)), "/preset_ntsc_720p." + String((char)slot));
-                    flag += SPIFFS.rename("/preset_ntsc_1080p." + String((char)(nextSlot)), "/preset_ntsc_1080p." + String((char)slot));
-                    flag += SPIFFS.rename("/preset_medium_res." + String((char)(nextSlot)), "/preset_medium_res." + String((char)slot));
-                    flag += SPIFFS.rename("/preset_vga_upscale." + String((char)(nextSlot)), "/preset_vga_upscale." + String((char)slot));
-                    flag += SPIFFS.rename("/preset_unknown." + String((char)(nextSlot)), "/preset_unknown." + String((char)slot));
+                    for (size_t i = 0; i < PRESET_FILE_COUNT; i++) {
+                        flag += SPIFFS.rename(presetFileNameAt(i, nextSlot), presetFileNameAt(i, slot));
+                    }
 
                     slotsObject.slot[currentSlot + loopCount].slot = slotsObject.slot[currentSlot + loopCount + 1].slot;
                     slotsObject.slot[currentSlot + loopCount].presetID = slotsObject.slot[currentSlot + loopCount + 1].presetID;
@@ -435,9 +381,7 @@ void startWebserver()
                     loopCount++;
                 }
 
-                File slotsBinaryFileWrite = SPIFFS.open(SLOTS_FILE, "w");
-                slotsBinaryFileWrite.write((byte *)&slotsObject, sizeof(slotsObject));
-                slotsBinaryFileWrite.close();
+                writeSlots(slotsObject);
                 SerialM.println("Preset \"" + slotName + "\" removed");
                 result = true;
             }
@@ -511,11 +455,8 @@ void startWebserver()
 
     server.on("/gbs/restore-filters", HTTP_GET, [](AsyncWebServerRequest *request) {
         SlotMetaArray slotsObject;
-        File slotsBinaryFileRead = SPIFFS.open(SLOTS_FILE, "r");
         bool result = false;
-        if (slotsBinaryFileRead) {
-            slotsBinaryFileRead.read((byte *)&slotsObject, sizeof(slotsObject));
-            slotsBinaryFileRead.close();
+        if (readSlots(slotsObject)) {
             auto currentSlot = slotIndexMap.indexOf(uopt->presetSlot);
             if (currentSlot == -1) {
                 goto fail;
