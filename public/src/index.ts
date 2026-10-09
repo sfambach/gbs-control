@@ -56,15 +56,12 @@ const StructParser = {
         const currentPos = this.pos;
         this.pos += structItem.size;
 
-        return [...Array(structItem.size)]
-          .map(() => " ")
-          .map((_char, index) => {
-            if (buff[currentPos + index] > 31) {
-              return String.fromCharCode(buff[currentPos + index]);
-            }
-            return "";
-          })
-          .join("")
+        // names are stored as UTF-8 bytes, terminated by 0
+        const bytes = buff.slice(currentPos, currentPos + structItem.size);
+        const end = bytes.indexOf(0);
+        return new TextDecoder("utf-8")
+          .decode(end < 0 ? bytes : bytes.slice(0, end))
+          .replace(/[\x00-\x1f]/g, "")
           .trim();
     }
   },
@@ -447,6 +444,19 @@ const loadUser = (link: string) => {
 
 /** SLOT management */
 
+/** shorten a string to at most maxBytes UTF-8 bytes without cutting a character */
+const truncateUtf8 = (text: string, maxBytes: number) => {
+  const encoder = new TextEncoder();
+  let out = "";
+  for (const ch of text) {
+    if (encoder.encode(out + ch).length > maxBytes) {
+      break;
+    }
+    out += ch;
+  }
+  return out;
+};
+
 const savePreset = () => {
   const currentSlot = document.querySelector('[gbs-role="slot"][active]');
 
@@ -464,9 +474,8 @@ const savePreset = () => {
       if (currentName && currentName.trim() !== "Empty") {
         currentSlot.setAttribute("gbs-name", currentName);
         fetch(
-          `/slot/save?index=${currentIndex}&name=${currentName.substring(
-            0,
-            24
+          `/slot/save?index=${currentIndex}&name=${encodeURIComponent(
+            truncateUtf8(currentName, 24)
           )}&${+new Date()}`
         ).then(() => {
           loadUser("4").then(() => {
