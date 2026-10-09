@@ -25,16 +25,14 @@
 #include "SSD1306Wire.h"
 #include "images.h"
 
-#define HAVE_BUTTONS 0
-#define USE_NEW_OLED_MENU 1
-
 static inline void writeBytes(uint8_t slaveRegister, uint8_t *values, uint8_t numValues);
 const uint8_t *loadPresetFromSPIFFS(byte forVideoMode);
 
-SSD1306Wire display(0x3c, D2, D1); //inits I2C address & pins for OLED
-const int pin_clk = 14;            //D5 = GPIO14 (input of one direction for encoder)
-const int pin_data = 13;           //D7 = GPIO13	(input of one direction for encoder)
-const int pin_switch = 0;          //D3 = GPIO0 pulled HIGH, else boot fail (middle push button for encoder)
+// pins and addresses: see config.h
+SSD1306Wire display(OLED_I2C_ADDRESS, OLED_PIN_SDA, OLED_PIN_SCL);
+const int pin_clk = ENCODER_PIN_CLK;
+const int pin_data = ENCODER_PIN_DATA;
+const int pin_switch = ENCODER_PIN_SWITCH;
 
 #if USE_NEW_OLED_MENU
 #include "OLEDMenuImplementation.h"
@@ -119,41 +117,29 @@ static unsigned long lastVsyncLock = millis();
 #include "src/si5351mcu.h"
 Si5351mcu Si;
 
-#define THIS_DEVICE_MASTER
-#ifdef THIS_DEVICE_MASTER
-const char *ap_ssid = "gbscontrol";
-const char *ap_password = "qqqqqqqq";
-// change device_hostname_full and device_hostname_partial to rename the device
-// (allows 2 or more on the same network)
-// new: only use _partial throughout, comply to standards
-const char *device_hostname_full = "gbscontrol.local";
-const char *device_hostname_partial = "gbscontrol"; // for MDNS
+// device name and access point: see config.h (DEVICE_HOSTNAME, AP_SSID, AP_PASSWORD)
+#define GBS_STR_(x) #x
+#define GBS_STR(x) GBS_STR_(x)
+const char *ap_ssid = AP_SSID;
+const char *ap_password = AP_PASSWORD;
+// only use _partial throughout, comply to standards
+const char *device_hostname_full = DEVICE_HOSTNAME ".local";
+const char *device_hostname_partial = DEVICE_HOSTNAME; // for MDNS
 //
 static const char ap_info_string[] PROGMEM =
-    "(WiFi): AP mode (SSID: gbscontrol, pass 'qqqqqqqq'): Access 'gbscontrol.local' in your browser";
+    "(WiFi): AP mode (SSID: " AP_SSID ", pass '" AP_PASSWORD "'): Access '" DEVICE_HOSTNAME ".local' in your browser";
 static const char st_info_string[] PROGMEM =
-    "(WiFi): Access 'http://gbscontrol:80' or 'http://gbscontrol.local' (or device IP) in your browser";
-#else
-const char *ap_ssid = "gbsslave";
-const char *ap_password = "qqqqqqqq";
-const char *device_hostname_full = "gbsslave.local";
-const char *device_hostname_partial = "gbsslave"; // for MDNS
-//
-static const char ap_info_string[] PROGMEM =
-    "(WiFi): AP mode (SSID: gbsslave, pass 'qqqqqqqq'): Access 'gbsslave.local' in your browser";
-static const char st_info_string[] PROGMEM =
-    "(WiFi): Access 'http://gbsslave:80' or 'http://gbsslave.local' (or device IP) in your browser";
-#endif
+    "(WiFi): Access 'http://" DEVICE_HOSTNAME ":" GBS_STR(WEB_SERVER_PORT) "' or 'http://" DEVICE_HOSTNAME ".local' (or device IP) in your browser";
 
 #if ENABLE_WIFI
-AsyncWebServer server(80);
+AsyncWebServer server(WEB_SERVER_PORT);
 DNSServer dnsServer;
-WebSocketsServer webSocket(81);
+WebSocketsServer webSocket(WEBSOCKET_PORT);
 //AsyncWebSocket webSocket("/ws");
 PersWiFiManager persWM(server, dnsServer);
 #endif
 
-#define DEBUG_IN_PIN D6 // marked "D12/MISO/D6" (Wemos D1) or D6 (Lolin NodeMCU)
+// DEBUG_IN_PIN: see config.h
 // SCL = D1 (Lolin), D15 (Wemos D1) // ESP8266 Arduino default map: SCL
 // SDA = D2 (Lolin), D14 (Wemos D1) // ESP8266 Arduino default map: SDA
 #define LEDON                     \
@@ -208,7 +194,6 @@ struct WebCommand
     char type; // 's' = serialCommand, 'u' = userCommand
     char cmd;
 };
-static constexpr uint8_t WEB_CMD_QUEUE_LEN = 16;
 static WebCommand webCmdQueue[WEB_CMD_QUEUE_LEN];
 static volatile uint8_t webCmdHead = 0;
 static volatile uint8_t webCmdTail = 0;
@@ -250,8 +235,8 @@ static void dequeueWebCommand()
 class SerialMirror : public Stream
 {
 public:
-    static constexpr size_t BUF_LEN = 512;
-    static constexpr unsigned long FLUSH_INTERVAL_MS = 40;
+    static constexpr size_t BUF_LEN = WEB_LOG_BUFFER_SIZE;
+    static constexpr unsigned long FLUSH_INTERVAL_MS = WEB_LOG_FLUSH_INTERVAL_MS;
 
     size_t write(const uint8_t *data, size_t size)
     {
@@ -640,7 +625,7 @@ void setup()
 #endif
     rto->webServerStarted = false; // make sure this is set
 
-    Serial.begin(921600); // serial monitor must use the same speed (platformio.ini: monitor_speed)
+    Serial.begin(SERIAL_BAUD); // serial monitor must use the same speed (platformio.ini: monitor_speed)
     Serial.setTimeout(10);
 
     // millis() at this point: typically 65ms
@@ -660,7 +645,7 @@ void setup()
     if (rto->webServerEnabled) {
         rto->allowUpdatesOTA = false;       // need to initialize for handleWiFi()
         WiFi.setSleepMode(WIFI_NONE_SLEEP); // low latency responses, less chance for missing packets
-        WiFi.setOutputPower(16.0f);         // float: min 0.0f, max 20.5f
+        WiFi.setOutputPower(WIFI_OUTPUT_POWER);         // float: min 0.0f, max 20.5f
         startWebserver();
         rto->webServerStarted = true;
     } else {

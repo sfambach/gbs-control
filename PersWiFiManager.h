@@ -15,10 +15,7 @@
 #include <ESPAsyncWebServer.h>
 #include <DNSServer.h>
 
-#define WIFI_CONNECT_TIMEOUT 45
-// in AP mode with stored credentials: retry the stored network every .._INTERVAL for .._DURATION seconds
-#define WIFI_AP_RETRY_INTERVAL 60
-#define WIFI_AP_RETRY_DURATION 15
+// WIFI_CONNECT_TIMEOUT, WIFI_AP_RETRY_INTERVAL, WIFI_AP_RETRY_DURATION: see config.h
 
 class PersWiFiManager
 {
