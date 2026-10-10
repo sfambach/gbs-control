@@ -1,6 +1,11 @@
 #ifndef BOARD_D1_MINI_H_
 #define BOARD_D1_MINI_H_
 
+// shown at boot, in /api/status and in the web ui
+#ifndef GBS_BOARD_NAME
+#define GBS_BOARD_NAME "D1 mini (ESP8266)"
+#endif
+
 // Wemos / Lolin D1 mini (ESP8266), also NodeMCU
 // Board layer: pins and wiring. To add a board, write a board_<name>.h and select it in config.h
 // or with -DGBS_BOARD_HEADER=\"board_<name>.h\" in platformio.ini. Every value can still be

@@ -116,7 +116,8 @@ static void apiStatus(AsyncWebServerRequest *request)
         j += "\"mode\":\"sta\",\"ssid\":\"" + WiFi.SSID() + "\",\"bssid\":\"" + WiFi.BSSIDstr() +
              "\",\"channel\":" + String(WiFi.channel()) + ",\"rssi\":" + String(WiFi.RSSI());
     }
-    j += "},\"freeHeap\":";
+    j += "},\"firmware\":{\"version\":\"" GBS_FW_VERSION "\",\"board\":\"" GBS_BOARD_NAME "\",\"built\":\"" __DATE__ " " __TIME__ "\"}";
+    j += ",\"freeHeap\":";
     j += ESP.getFreeHeap();
     j += "}";
     apiSendJson(request, 200, j);

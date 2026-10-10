@@ -1242,6 +1242,7 @@
                 <div>Reset Defaults</div>
               </button>
             </div>
+            <div class="gbs-fw-version" gbs-fw-version></div>
           </fieldset>
           <fieldset class="gbs-fieldset">
             <legend class="gbs-fieldset__legend gbs-fieldset__legend--help"">

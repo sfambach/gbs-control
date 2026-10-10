@@ -5,6 +5,13 @@
 // Every value can be overridden from the build system, e.g. in platformio.ini:
 //   build_flags = -DENABLE_WIFI=0 -DDEVICE_HOSTNAME=\"gbsslave\"
 
+// --- firmware ----------------------------------------------------------------
+
+// set by tools/pio_version.py from git describe (PlatformIO builds)
+#ifndef GBS_FW_VERSION
+#define GBS_FW_VERSION "dev"
+#endif
+
 // --- features --------------------------------------------------------------
 
 // 0: compile without WiFi / web UI / OTA (OLED menu only)
@@ -89,6 +96,9 @@
 #include "board_d1_mini32.h"
 #else
 #include "board_d1_mini.h"
+#endif
+#ifndef GBS_BOARD_NAME
+#define GBS_BOARD_NAME "unknown board"
 #endif
 
 // --- measurement -----------------------------------------------------------

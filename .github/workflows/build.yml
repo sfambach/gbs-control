@@ -1,0 +1,69 @@
+# Builds the firmware for every supported board.
+# - push / pull request: compile check, binaries as workflow artifacts
+# - tag vX.Y.Z: additionally a GitHub release with the binaries
+name: build
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write # create the release on tags
+
+jobs:
+  firmware:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # tags for the version number (git describe)
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            ~/.cache/pip
+          key: pio-${{ hashFiles('platformio.ini') }}
+
+      - name: Install PlatformIO
+        run: pip install platformio
+
+      - name: Build
+        run: pio run -e d1_mini -e d1_mini32
+
+      - name: Collect binaries
+        run: |
+          VERSION=$(git describe --tags --match 'v[0-9]*' --always)
+          mkdir dist
+          cp .pio/build/d1_mini/firmware.bin          "dist/gbscontrol-${VERSION}-d1_mini-esp8266.bin"
+          cp .pio/build/d1_mini32/firmware_merged.bin "dist/gbscontrol-${VERSION}-d1_mini32-esp32-full.bin"
+          cp .pio/build/d1_mini32/firmware.bin        "dist/gbscontrol-${VERSION}-d1_mini32-esp32-update.bin"
+          (cd dist && sha256sum *.bin > SHA256SUMS.txt)
+          ls -l dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware
+          path: dist/*
+
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          body: |
+            | file | board | flash |
+            |---|---|---|
+            | `*-d1_mini-esp8266.bin` | Wemos D1 mini (ESP8266) | at 0x0, or OTA |
+            | `*-d1_mini32-esp32-full.bin` | D1 mini ESP32 | first install, at 0x0 (bootloader + partitions + app) |
+            | `*-d1_mini32-esp32-update.bin` | D1 mini ESP32 | update of an installed device (OTA, or at 0x10000) |
+
+            Settings and presets on the device are kept (separate file system partition).

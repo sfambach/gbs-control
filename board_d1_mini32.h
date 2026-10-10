@@ -1,6 +1,11 @@
 #ifndef BOARD_D1_MINI32_H_
 #define BOARD_D1_MINI32_H_
 
+// shown at boot, in /api/status and in the web ui
+#ifndef GBS_BOARD_NAME
+#define GBS_BOARD_NAME "D1 mini ESP32"
+#endif
+
 // Wemos / Lolin "D1 mini ESP32" (ESP32-WROOM in D1 mini form factor)
 // Same wiring as the ESP8266 D1 mini by pin label (D1, D2, D6, ...); the GPIO numbers differ:
 //   D1 = GPIO22 (SCL), D2 = GPIO21 (SDA), D6 = GPIO19, D5 = GPIO18, D7 = GPIO23, D3 = GPIO17

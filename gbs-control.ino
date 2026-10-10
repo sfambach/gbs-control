@@ -659,6 +659,7 @@ void setup()
 #endif
 
     SerialM.println(F("\nstartup"));
+    SerialM.println(F("GBSControl " GBS_FW_VERSION " on " GBS_BOARD_NAME));
     SerialM.print(F("reset reason: "));
     SerialM.println(gbsResetReason()); // e.g. after a crash or watchdog reset
 

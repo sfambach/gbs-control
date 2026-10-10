@@ -493,6 +493,18 @@ const getSlotPresetName = (presetID) => {
 const fetchSlotNamesErrorRetry = () => {
     setTimeout(fetchSlotNamesAndInit, 1000);
 };
+/** firmware version + board in the system section (from the JSON API) */
+const fetchFirmwareInfo = () => {
+    fetch(`/api/status?${+new Date()}`)
+        .then((r) => r.json())
+        .then((status) => {
+        const el = document.querySelector("[gbs-fw-version]");
+        if (el && status.firmware) {
+            el.textContent = `Firmware ${status.firmware.version} (${status.firmware.board}, built ${status.firmware.built})`;
+        }
+    })
+        .catch(() => { });
+};
 const fetchSlotNamesAndInit = () => {
     fetchSlotNames()
         .then((success) => {
@@ -504,6 +516,7 @@ const fetchSlotNamesAndInit = () => {
         wifiGetStatus().then(() => {
             initUI();
             updateSlotNames();
+            fetchFirmwareInfo();
             createWebSocket();
             createIntervalChecks();
             setTimeout(hideLoading, 1000);
