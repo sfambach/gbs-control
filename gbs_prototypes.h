@@ -165,6 +165,7 @@ void initUpdateOTA();
 #endif
 
 // gbs_commands.ino
+void handleSerialCommand();
 void discardSerialRxData();
 void myLog(char const* type, char command);
 #if defined(ESP8266)
