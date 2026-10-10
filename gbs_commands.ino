@@ -595,6 +595,21 @@ void handleSerialCommand()
             // skip spaces
             inputStage = segmentCurrent = registerCurrent = 0; // and reset these
             break;
+#if defined(ESP32) || defined(ESP8266)
+        case 'I': {
+            // WiFi diagnostics: stored network and what the scan sees (blocking scan, user triggered)
+            String stored = gbsWifiStoredSsid();
+            SerialM.printf("(WiFi): stored SSID '%s' (%u bytes), status %d, mode %d\n", stored.c_str(),
+                           stored.length(), (int)WiFi.status(), (int)WiFi.getMode());
+            int n = WiFi.scanNetworks(false, true);
+            for (int i = 0; i < n; i++) {
+                SerialM.printf("  '%s' %s ch %d %d dBm enc %d\n", WiFi.SSID(i).c_str(), WiFi.BSSIDstr(i).c_str(),
+                               WiFi.channel(i), WiFi.RSSI(i), (int)WiFi.encryptionType(i));
+            }
+            SerialM.printf("(WiFi): %d networks\n", n);
+            WiFi.scanDelete();
+        } break;
+#endif
         case 'd': {
             // don't store scanlines
             if (GBS::GBS_OPTION_SCANLINES_ENABLED::read() == 1) {

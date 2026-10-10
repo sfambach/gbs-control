@@ -28,6 +28,8 @@ bool PersWiFiManager::attemptConnection(const String &ssid, const String &pass)
 {
     //attempt to connect to wifi
     WiFi.mode(WIFI_STA);
+    WiFi.setAutoReconnect(true);
+    gbsWifiPreferStrongestAp();
     gbsWifiSetHostname(device_hostname_partial); // _full // before WiFi.begin();
     if (ssid.length()) {
         if (pass.length())
@@ -59,8 +61,7 @@ void PersWiFiManager::handleApRetry()
             _apRetryTime = 0;
             _dnsServer->stop();
             WiFi.mode(WIFI_STA); // connected again, AP no longer needed
-            if (_connectHandler)
-                _connectHandler();
+            WiFi.setAutoReconnect(true);
         } else if ((millis() - _apRetryTime) > (1000UL * WIFI_AP_RETRY_DURATION)) {
             _apRetrying = false;
             _apRetryTime = millis();
@@ -78,6 +79,16 @@ void PersWiFiManager::handleApRetry()
 
 void PersWiFiManager::handleWiFi()
 {
+    // first connection, whichever way it came (boot, AP retry, web ui, core auto reconnect):
+    // connect handler once (starts mDNS)
+    if (!_connectNotified && WiFi.status() == WL_CONNECTED) {
+        _connectNotified = true;
+        Serial.printf("(WiFi): connected to %s, AP %s, channel %d, RSSI %d dBm, IP %s\n", WiFi.SSID().c_str(),
+                      WiFi.BSSIDstr().c_str(), WiFi.channel(), WiFi.RSSI(), WiFi.localIP().toString().c_str());
+        if (_connectHandler)
+            _connectHandler();
+    }
+
     if (_apRetryTime) {
         handleApRetry();
         return;
@@ -88,13 +99,12 @@ void PersWiFiManager::handleWiFi()
 
     if (WiFi.status() == WL_CONNECTED) {
         _connectStartTime = 0;
-        if (_connectHandler)
-            _connectHandler();
         return;
     }
 
     //if failed or not connected and time is up
     if ((WiFi.status() == WL_CONNECT_FAILED) || ((WiFi.status() != WL_CONNECTED) && ((millis() - _connectStartTime) > (1000 * WIFI_CONNECT_TIMEOUT)))) {
+        _connectFailed = true;
         startApMode();
         _connectStartTime = 0; //reset connect start time
         if (gbsWifiStoredSsid().length()) {
@@ -111,6 +121,10 @@ void PersWiFiManager::startApMode()
     // AP + STA in parallel: scanning works right away (ESP32 needs STA for it) and the reconnect
     // retry for a stored network runs without tearing the access point down
     WiFi.mode(WIFI_AP_STA);
+    // stop the STA from retrying on its own: every attempt scans and leaves the AP channel (on ESP32 the
+    // core restarts it right after each "no AP found", which makes the AP unusable). Retries: handleApRetry()
+    WiFi.setAutoReconnect(false);
+    WiFi.disconnect(false);
     WiFi.softAPConfig(apIP, apIP, IPAddress(255, 255, 255, 0));
     _apPass.length() ? WiFi.softAP(getApSsid().c_str(), _apPass.c_str(), 11) : WiFi.softAP(getApSsid().c_str());
 
@@ -128,6 +142,53 @@ void PersWiFiManager::startApMode()
     if (_apHandler)
         _apHandler();
 } //startApMode
+
+void PersWiFiManager::connectKeepAp(const String &ssid, const String &pass)
+{
+    _apRetryTime = 0; // a user initiated attempt replaces the background retry
+    _apRetrying = false;
+    _connectFailed = false;
+    WiFi.persistent(true); // store the new network (core 3.x / ESP32 default: off)
+    WiFi.mode(apActive() ? WIFI_AP_STA : WIFI_STA);
+    WiFi.setAutoReconnect(true);
+    gbsWifiPreferStrongestAp();
+    gbsWifiSetHostname(device_hostname_partial);
+    if (pass.length()) {
+        WiFi.begin(ssid.c_str(), pass.c_str());
+    } else {
+        WiFi.begin(ssid.c_str());
+    }
+    _connectStartTime = millis(); // handleWiFi() reports success (connect handler) or failure
+}
+
+const char *PersWiFiManager::staState()
+{
+    if (WiFi.status() == WL_CONNECTED) {
+        return "connected";
+    }
+    if (_connectStartTime || _apRetrying) {
+        return "connecting";
+    }
+    return _connectFailed ? "failed" : "off";
+}
+
+bool PersWiFiManager::apActive()
+{
+    return (WiFi.getMode() & WIFI_AP) != 0;
+}
+
+bool PersWiFiManager::stopAp()
+{
+    if (WiFi.status() != WL_CONNECTED) {
+        return false; // would lock the user out
+    }
+    _apRetryTime = 0;
+    _apRetrying = false;
+    _dnsServer->stop();
+    WiFi.softAPdisconnect(true);
+    WiFi.mode(WIFI_STA);
+    return true;
+}
 
 void PersWiFiManager::setConnectNonBlock(bool b)
 {

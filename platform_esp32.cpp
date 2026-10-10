@@ -22,11 +22,28 @@ String gbsResetReason()
 
 String gbsWifiStoredSsid()
 {
+    if (WiFi.getMode() == WIFI_MODE_NULL) {
+        WiFi.mode(WIFI_STA); // the stored config can only be read once the WiFi driver runs
+    }
     wifi_config_t conf;
     if (esp_wifi_get_config(WIFI_IF_STA, &conf) != ESP_OK) {
         return String();
     }
     return String(reinterpret_cast<const char *>(conf.sta.ssid));
+}
+
+void gbsWifiPreferStrongestAp()
+{
+    WiFi.setScanMethod(WIFI_ALL_CHANNEL_SCAN);
+    WiFi.setSortMethod(WIFI_CONNECT_AP_BY_SIGNAL);
+    // WiFi.begin() without arguments uses the stored config as it is, so fix that one as well
+    wifi_config_t conf;
+    if (esp_wifi_get_config(WIFI_IF_STA, &conf) == ESP_OK && conf.sta.ssid[0] &&
+        (conf.sta.scan_method != WIFI_ALL_CHANNEL_SCAN || conf.sta.sort_method != WIFI_CONNECT_AP_BY_SIGNAL)) {
+        conf.sta.scan_method = WIFI_ALL_CHANNEL_SCAN;
+        conf.sta.sort_method = WIFI_CONNECT_AP_BY_SIGNAL;
+        esp_wifi_set_config(WIFI_IF_STA, &conf);
+    }
 }
 
 static void (*disconnectedCallback)(int) = nullptr;

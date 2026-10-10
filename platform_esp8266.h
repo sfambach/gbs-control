@@ -43,6 +43,8 @@
 #define GBS_ISR_CAN_REATTACH 1
 
 #define gbsWifiSetHostname(name) WiFi.hostname(name)
+// the SDK already picks the strongest AP with the SSID
+#define gbsWifiPreferStrongestAp()
 #define gbsWifiStoredSsid() WiFi.SSID()
 #define gbsMdnsUpdate() MDNS.update()
 #define gbsMdnsBegin(name) MDNS.begin(name, WiFi.localIP())

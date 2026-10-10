@@ -145,6 +145,7 @@ const GBSControl = {
     wifiStaSSID: null,
     alert: null,
     alertOk: null,
+    alertCancel: null,
     alertContent: null,
     prompt: null,
     promptOk: null,
@@ -949,30 +950,88 @@ const wifiGetStatus = () => {
 };
 
 const wifiConnect = () => {
-  const ssid = GBSControl.ui.wifiSSDInput.value;
-  const password = GBSControl.ui.wifiPasswordInput.value;
-
-  if (!password.length) {
-    GBSControl.ui.wifiPasswordInput.classList.add("gbs-wifi__input--error");
-    return;
-  }
-
-  const formData = new FormData();
-  formData.append("n", ssid);
-  formData.append("p", password);
-
-  fetch("/wifi/connect", {
-    method: "POST",
-    body: formData,
-  }).then(() => {
-    gbsAlert(
-      `GBSControl will restart and will connect to ${ssid}. Please wait some seconds then press OK`
-    )
-      .then(() => {
-        window.location.href = "http://gbscontrol.local/";
-      })
-      .catch(() => {});
-  });
+    const ssid = GBSControl.ui.wifiSSDInput.value;
+    const password = GBSControl.ui.wifiPasswordInput.value;
+    if (!password.length) {
+        GBSControl.ui.wifiPasswordInput.classList.add("gbs-wifi__input--error");
+        return;
+    }
+    const formData = new FormData();
+    formData.append("n", ssid);
+    formData.append("p", password);
+    // the device connects right away (no restart), the access point stays on meanwhile
+    fetch("/wifi/connect", {
+        method: "POST",
+        body: formData,
+    }).then(() => wifiWaitForConnection(ssid), () => wifiWaitForConnection(ssid));
+};
+/** the AP is off: wait until this device has changed into the network and GBSControl answers there, then open it */
+const wifiRedirectWhenReachable = (url: string, ssid: string) => {
+    let done = false;
+    const open = () => {
+        done = true;
+        window.location.href = url;
+    };
+    gbsAlert(`Access point is off. Connect this device to ${ssid}, the page then opens ${url} by itself (or press OK).`)
+        .then(open, open);
+    const poll = () => {
+        if (done) {
+            return;
+        }
+        // opaque cross origin request: resolves as soon as the device answers in the new network
+        const abort = new AbortController();
+        const timer = setTimeout(() => abort.abort(), 3000); // request timeout, the network may not route yet
+        fetch(`${url}wifi/status?${+new Date()}`, { mode: "no-cors", signal: abort.signal })
+            .then(() => {
+            clearTimeout(timer);
+            if (!done) {
+                gbsAlertPromise.resolve();
+            }
+        }, () => {
+            clearTimeout(timer);
+            setTimeout(poll, 1000);
+        });
+    };
+    poll();
+};
+/** poll /wifi/status until the station reports connected or failed, then offer to switch the AP off */
+const wifiWaitForConnection = (ssid: string) => {
+    GBSControl.ui.wifiStaSSID.innerHTML = `connecting to ${ssid} ...`;
+    let polls = 0;
+    const retry = () => {
+        // safety net only (the device reports "failed" itself after its connect timeout)
+        if (++polls < 120) {
+            setTimeout(poll, 1000);
+        }
+        else {
+            wifiGetStatus();
+        }
+    };
+    const poll = () => fetch(`/wifi/status?${+new Date()}`)
+        .then((r) => r.json())
+        .then((status: any) => {
+        if (status.sta === "connecting") {
+            retry();
+            return;
+        }
+        if (status.sta === "connected") {
+            // the IP works everywhere (.local needs mDNS, which e.g. Android browsers lack)
+            const url = `http://${status.ip}/`;
+            gbsConfirm(`Connected to ${status.ssid}, IP ${status.ip} (http://${status.hostname}.local). Switch the access point off? Your phone / computer then has to be in ${status.ssid} to reach GBSControl.`)
+                .then(() => fetch(`/wifi/ap?off=1&${+new Date()}`)
+                .catch(() => { })
+                .then(() => wifiRedirectWhenReachable(url, status.ssid)))
+                .catch(() => wifiGetStatus());
+            return;
+        }
+        gbsAlert(`Could not connect to ${ssid}. Check the password and try again.`)
+            .catch(() => { })
+            .then(() => wifiGetStatus());
+    })
+        // the access point changes its channel to the one of the new network,
+        // so the connection to it can drop for a moment: just ask again
+        .catch(retry);
+    poll();
 };
 
 const wifiScanSSID = () => {
@@ -1250,6 +1309,7 @@ const initUIElements = () => {
     customSlotFilters: document.querySelector("[gbs-slot-custom-filters]"),
     alert: document.querySelector('section[name="alert"]'),
     alertOk: document.querySelector("[gbs-alert-ok]"),
+        alertCancel: document.querySelector("[gbs-alert-cancel]"),
     alertContent: document.querySelector("[gbs-alert-content]"),
     prompt: document.querySelector('section[name="prompt"]'),
     promptOk: document.querySelector("[gbs-prompt-ok]"),
@@ -1281,6 +1341,9 @@ const initGeneralListeners = () => {
     toggleCustomSlotFilters
   );
 
+  GBSControl.ui.alertCancel.addEventListener("click", () => {
+      gbsAlertPromise.reject();
+  });
   GBSControl.ui.alertOk.addEventListener("click", () => {
     GBSControl.ui.alert.setAttribute("hidden", "");
     gbsAlertPromise.resolve();
@@ -1368,6 +1431,23 @@ const gbsAlert = (text: string) => {
   });
 };
 
+/** yes / no question: resolves on OK (yes), rejects on NO / Escape */
+const gbsConfirm = (text: string) => {
+    const cancel = GBSControl.ui.alertCancel;
+    cancel.removeAttribute("disabled");
+    cancel.innerHTML = '<div class="gbs-icon">close</div><div>NO</div>';
+    const reset = () => {
+        cancel.setAttribute("disabled", "");
+        cancel.innerHTML = "";
+    };
+    return gbsAlert(text).then((value) => {
+        reset();
+        return value;
+    }, (error) => {
+        reset();
+        throw error;
+    });
+};
 const gbsPromptPromise = {
   resolve: null,
   reject: null,

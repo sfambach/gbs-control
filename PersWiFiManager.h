@@ -39,6 +39,14 @@ public:
 
     void startApMode();
 
+    // connect to a new network right away, without a restart; a running access point stays on
+    void connectKeepAp(const String &ssid, const String &pass);
+    // station state for the web ui: "connected", "connecting", "failed" or "off"
+    const char *staState();
+    bool apActive();
+    // switch the access point off; only while the station is connected (returns false otherwise)
+    bool stopAp();
+
     void onConnect(WiFiChangeHandlerFunction fn);
 
     void onAp(WiFiChangeHandlerFunction fn);
@@ -52,6 +60,8 @@ private:
     unsigned long _connectStartTime;
     unsigned long _apRetryTime = 0; // != 0: AP mode fallback active, time of last retry change
     bool _apRetrying = false;       // currently trying the stored network (AP + STA)
+    bool _connectFailed = false;    // last connection attempt timed out / failed
+    bool _connectNotified = false; // connect handler called (once per boot)
 
     void handleApRetry();
 

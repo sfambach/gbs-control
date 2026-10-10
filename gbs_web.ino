@@ -113,6 +113,8 @@ void updateWebSocketData()
     }
 }
 
+static volatile bool apOffRequested = false; // set by /wifi/ap?off=1 after its response is sent
+
 void handleWiFi(boolean instant)
 {
     static unsigned long lastTimePing = millis();
@@ -123,7 +125,13 @@ void handleWiFi(boolean instant)
         webSocket.loop();
 #endif
         persWM.handleWiFi(); // if connected, returns instantly. otherwise it reconnects or opens AP
-        dnsServer.processNextRequest();
+        if (apOffRequested) {
+            apOffRequested = false;
+            persWM.stopAp();
+        }
+        if (WiFi.getMode() & WIFI_AP) { // captive portal DNS only while the AP runs (ESP32 logs errors otherwise)
+            dnsServer.processNextRequest();
+        }
         // buffered log output for the web ui terminal; right away after a command
         if (instant) {
             SerialM.flush();
@@ -243,21 +251,34 @@ void startWebserver()
             request->beginResponse(200, "application/json", "true");
         request->send(response);
 
+        const String ssid = request->arg("n"); // n holds ssid, p holds password
+        if (ssid.length() && ssid != "dummy") {
+            // connect right away, the access point stays on; the web ui polls /wifi/status and
+            // then asks whether the access point should be switched off (/wifi/ap?off=1)
+            persWM.connectKeepAp(ssid, request->arg("p"));
+            return;
+        }
+
+        // "dummy" (web ui "AP mode" button) or empty: old behaviour, store and restart
         // core 3.x: persistent is off by default (2.x: on), without it the new network is not
         // stored in flash and the device reconnects to the old one after the restart below
         WiFi.persistent(true);
-        if (request->arg("n").length()) {     // n holds ssid
-            if (request->arg("p").length()) { // p holds password
-                // false = only save credentials, don't connect
-                WiFi.begin(request->arg("n").c_str(), request->arg("p").c_str(), 0, 0, false);
-            } else {
-                WiFi.begin(request->arg("n").c_str(), emptyString, 0, 0, false);
-            }
+        if (ssid.length()) {
+            WiFi.begin(ssid.c_str(), request->arg("p").c_str(), 0, 0, false); // only store
         } else {
             WiFi.begin();
         }
-
         userCommand = 'u'; // next loop, set wifi station mode and restart device
+    });
+
+    server.on("/wifi/ap", HTTP_GET, [](AsyncWebServerRequest *request) {
+        bool ok = false;
+        if (request->hasParam("off") && WiFi.status() == WL_CONNECTED) {
+            // switch off once the answer is out (the client sits on this AP), see handleWiFi()
+            request->onDisconnect([]() { apOffRequested = true; });
+            ok = true;
+        }
+        request->send(ok ? 200 : 409, "application/json", ok ? "{\"ok\":true}" : "{\"ok\":false,\"error\":\"station not connected\"}");
     });
 
     server.on("/bin/slots.bin", HTTP_GET, [](AsyncWebServerRequest *request) {
@@ -456,16 +477,18 @@ void startWebserver()
     startApi(); // JSON interface, see gbs_api.ino
 
     server.on("/wifi/status", HTTP_GET, [](AsyncWebServerRequest *request) {
-        // access point mode as long as there is no station connection (scanning or the reconnect
-        // retry switch to AP + STA, especially on ESP32, that must not look like "connected")
-        if ((WiFi.getMode() & WIFI_AP) && WiFi.status() != WL_CONNECTED) {
-            request->send(200, "application/json", "{\"mode\":\"ap\"}");
-            return;
+        // mode: "ap" as long as there is no station connection (the access point runs as AP + STA,
+        // that must not look like "connected"); sta: connected / connecting / failed / off;
+        // ap: access point running; bssid / channel / rssi: which access point the device uses
+        bool connected = WiFi.status() == WL_CONNECTED;
+        String j = String("{\"mode\":\"") + (persWM.apActive() && !connected ? "ap" : "sta") +
+                   "\",\"sta\":\"" + persWM.staState() + "\",\"ap\":" + (persWM.apActive() ? "true" : "false") +
+                   ",\"hostname\":\"" + device_hostname_partial + "\"";
+        if (connected) {
+            j += ",\"ssid\":\"" + WiFi.SSID() + "\",\"ip\":\"" + WiFi.localIP().toString() + "\",\"bssid\":\"" +
+                 WiFi.BSSIDstr() + "\",\"channel\":" + String(WiFi.channel()) + ",\"rssi\":" + String(WiFi.RSSI());
         }
-        // bssid / channel / rssi: which access point the device is connected to (wifi diagnostics)
-        request->send(200, "application/json", "{\"mode\":\"sta\",\"ssid\":\"" + WiFi.SSID() +
-            "\",\"bssid\":\"" + WiFi.BSSIDstr() + "\",\"channel\":" + String(WiFi.channel()) +
-            ",\"rssi\":" + String(WiFi.RSSI()) + "}");
+        request->send(200, "application/json", j + "}");
     });
 
     server.on("/gbs/restore-filters", HTTP_GET, [](AsyncWebServerRequest *request) {

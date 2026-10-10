@@ -53,6 +53,10 @@ typedef uint32_t uint32;
 String gbsResetReason();
 
 #define gbsWifiSetHostname(name) WiFi.setHostname(name)
+// default is a fast scan that takes the first AP found with the SSID (with several APs / a mesh often a
+// weak one): scan all channels and connect to the strongest instead. Used by every later WiFi.begin(),
+// also by WiFi.begin() without arguments (stored network).
+void gbsWifiPreferStrongestAp();
 #define gbsWifiOff() WiFi.mode(WIFI_OFF)
 #define gbsWifiLowLatency(dBm)                                \
     do {                                                      \

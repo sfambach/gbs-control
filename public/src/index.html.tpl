@@ -1367,7 +1367,7 @@
               gbs-alert-content
             ></div>
             <div class="gbs-flex">
-              <button class="gbs-button gbs-button__control" disabled></button>
+              <button gbs-alert-cancel class="gbs-button gbs-button__control" disabled></button>
               <button
                 gbs-alert-ok
                 class="gbs-button gbs-button__control gbs-button__secondary"
