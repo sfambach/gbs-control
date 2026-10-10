@@ -33,7 +33,7 @@ jobs:
           key: pio-${{ hashFiles('platformio.ini') }}
 
       - name: Install PlatformIO
-        run: pip install platformio
+        run: pip install platformio intelhex # intelhex: esptool needs it for the ESP32 bootloader image
 
       - name: Build
         run: pio run -e d1_mini -e d1_mini32
