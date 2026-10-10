@@ -3,7 +3,7 @@
 // (gbs-control.ino first), so globals and types from gbs-control.ino are visible here.
 
 #if !USE_NEW_OLED_MENU
-void ICACHE_RAM_ATTR isrRotaryEncoder()
+void GBS_IRAM_ATTR isrRotaryEncoder()
 {
     static unsigned long lastInterruptTime = 0;
     unsigned long interruptTime = millis();
@@ -31,7 +31,7 @@ void ICACHE_RAM_ATTR isrRotaryEncoder()
 #endif
 
 #if USE_NEW_OLED_MENU
-void ICACHE_RAM_ATTR isrRotaryEncoderRotateForNewMenu()
+void GBS_IRAM_ATTR isrRotaryEncoderRotateForNewMenu()
 {
     unsigned long interruptTime = millis();
     static unsigned long lastInterruptTime = 0;
@@ -57,7 +57,7 @@ void ICACHE_RAM_ATTR isrRotaryEncoderRotateForNewMenu()
     }
 }
 
-void ICACHE_RAM_ATTR isrRotaryEncoderPushForNewMenu()
+void GBS_IRAM_ATTR isrRotaryEncoderPushForNewMenu()
 {
     static unsigned long lastInterruptTime = 0;
     unsigned long interruptTime = millis();
@@ -607,7 +607,7 @@ void settingsMenuOLED()
             }
             webSocket.close();
             delay(60);
-            ESP.reset();
+            gbsRestart();
             oled_selectOption = 0;
             oled_subsetFrame = 0;
         }
@@ -624,7 +624,7 @@ void settingsMenuOLED()
             loadDefaultUserOptions();
             saveUserPrefs();
             delay(60);
-            ESP.reset();
+            gbsRestart();
             oled_selectOption = 1;
             oled_subsetFrame = 1;
         }

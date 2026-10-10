@@ -28,7 +28,7 @@ bool PersWiFiManager::attemptConnection(const String &ssid, const String &pass)
 {
     //attempt to connect to wifi
     WiFi.mode(WIFI_STA);
-    WiFi.hostname(device_hostname_partial); // _full // before WiFi.begin();
+    gbsWifiSetHostname(device_hostname_partial); // _full // before WiFi.begin();
     if (ssid.length()) {
         if (pass.length())
             WiFi.begin(ssid.c_str(), pass.c_str());

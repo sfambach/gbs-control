@@ -1,21 +1,10 @@
 #ifndef FRAMESYNC_H_
 #define FRAMESYNC_H_
 
-// fast digitalRead()
-#if defined(ESP8266)
-#define digitalRead(x) ((GPIO_REG_READ(GPIO_IN_ADDRESS) >> x) & 1)
-#ifndef DEBUG_IN_PIN
-#define DEBUG_IN_PIN D6
-#endif
-#else // Arduino
-// fastest, but non portable (Uno pin 11 = PB3, Mega2560 pin 11 = PB5)
-//#define digitalRead(x) bitRead(PINB, 3)
-#include "fastpin.h"
-#define digitalRead(x) fastRead<x>()
-// no define for DEBUG_IN_PIN
-#endif
-
-#include <ESP8266WiFi.h>
+// platform specifics (fast digitalRead, cycle counter, measurement hooks): see platform.h
+// DEBUG_IN_PIN: see the board header (config.h)
+#include "platform.h"
+#define digitalRead(x) GBS_FAST_DIGITAL_READ(x)
 
 // FS_DEBUG:      full verbose debug over serial
 // FS_DEBUG_LED:  just blink LED (off = adjust phase, on = normal phase)
@@ -58,24 +47,22 @@ namespace MeasurePeriod {
         attachInterrupt(DEBUG_IN_PIN, _risingEdgeISR_prepare, RISING);
     }
 
-    void ICACHE_RAM_ATTR _risingEdgeISR_prepare()
+    void GBS_IRAM_ATTR _risingEdgeISR_prepare()
     {
         noInterrupts();
         //startTime = ESP.getCycleCount();
-        __asm__ __volatile__("rsr %0,ccount"
-                            : "=a"(startTime));
+        gbsCycleCount(startTime);
         detachInterrupt(DEBUG_IN_PIN);
         armed = 1;
         attachInterrupt(DEBUG_IN_PIN, _risingEdgeISR_measure, RISING);
         interrupts();
     }
 
-    void ICACHE_RAM_ATTR _risingEdgeISR_measure()
+    void GBS_IRAM_ATTR _risingEdgeISR_measure()
     {
         noInterrupts();
         //stopTime = ESP.getCycleCount();
-        __asm__ __volatile__("rsr %0,ccount"
-                            : "=a"(stopTime));
+        gbsCycleCount(stopTime);
         detachInterrupt(DEBUG_IN_PIN);
         interrupts();
     }
@@ -135,7 +122,7 @@ private:
     static bool vsyncOutputSample(uint32_t *start, uint32_t *stop)
     {
         yield();
-        ESP.wdtDisable();
+        GBS_MEASURE_BEGIN();
         MeasurePeriod::start();
         const uint32_t firstEdgeWaitStart = micros();
 
@@ -150,7 +137,7 @@ private:
             if (MeasurePeriod::armed) {
                 MeasurePeriod::armed = 0;
                 delay(7);
-                WiFi.setSleepMode(WIFI_LIGHT_SLEEP);
+                GBS_MEASURE_ARMED();
             }
             if (MeasurePeriod::stopTime > 0) {
                 break;
@@ -158,8 +145,7 @@ private:
         }
         *start = MeasurePeriod::startTime;
         *stop = MeasurePeriod::stopTime;
-        ESP.wdtEnable(0);
-        WiFi.setSleepMode(WIFI_NONE_SLEEP);
+        GBS_MEASURE_END();
 
         if ((*start >= *stop) || *stop == 0 || *start == 0) {
             // ESP.getCycleCount() overflow oder no pulse, just fail this round
@@ -390,7 +376,7 @@ public:
     static bool vsyncInputSample(uint32_t *start, uint32_t *stop)
     {
         yield();
-        ESP.wdtDisable();
+        GBS_MEASURE_BEGIN();
         MeasurePeriod::start();
         const uint32_t firstEdgeWaitStart = micros();
 #ifdef LOOP_DIAG
@@ -410,7 +396,7 @@ public:
             if (MeasurePeriod::armed) {
                 MeasurePeriod::armed = 0;
                 delay(7);
-                WiFi.setSleepMode(WIFI_LIGHT_SLEEP);
+                GBS_MEASURE_ARMED();
             }
             if (MeasurePeriod::stopTime > 0) {
                 break;
@@ -425,8 +411,7 @@ public:
         }
         *start = MeasurePeriod::startTime;
         *stop = MeasurePeriod::stopTime;
-        ESP.wdtEnable(0);
-        WiFi.setSleepMode(WIFI_NONE_SLEEP);
+        GBS_MEASURE_END();
 
         if ((*start >= *stop) || *stop == 0 || *start == 0) {
             // ESP.getCycleCount() overflow oder no pulse, just fail this round

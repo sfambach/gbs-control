@@ -81,34 +81,14 @@
 #define WEB_CMD_QUEUE_LEN 16
 #endif
 
-// --- pins (ESP8266 D1 mini / NodeMCU) --------------------------------------
+// --- board: pins and wiring ----------------------------------------------
 
-// debug / measurement input from the GBS debug pin
-// marked "D12/MISO/D6" (Wemos D1) or D6 (Lolin NodeMCU)
-#ifndef DEBUG_IN_PIN
-#define DEBUG_IN_PIN D6
-#endif
-
-// OLED display (SSD1306): I2C address and pins
-#ifndef OLED_I2C_ADDRESS
-#define OLED_I2C_ADDRESS 0x3c
-#endif
-#ifndef OLED_PIN_SDA
-#define OLED_PIN_SDA D2
-#endif
-#ifndef OLED_PIN_SCL
-#define OLED_PIN_SCL D1
-#endif
-
-// rotary encoder
-#ifndef ENCODER_PIN_CLK
-#define ENCODER_PIN_CLK 14 // D5 = GPIO14 (input of one direction for encoder)
-#endif
-#ifndef ENCODER_PIN_DATA
-#define ENCODER_PIN_DATA 13 // D7 = GPIO13 (input of one direction for encoder)
-#endif
-#ifndef ENCODER_PIN_SWITCH
-#define ENCODER_PIN_SWITCH 0 // D3 = GPIO0 pulled HIGH, else boot fail (middle push button for encoder)
+#if defined(GBS_BOARD_HEADER)
+#include GBS_BOARD_HEADER
+#elif defined(ESP32)
+#include "board_d1_mini32.h"
+#else
+#include "board_d1_mini.h"
 #endif
 
 // --- measurement -----------------------------------------------------------

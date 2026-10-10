@@ -58,21 +58,12 @@ volatile int oled_main_pointer = 0; // volatile vars change done with ISR
 volatile int oled_pointer_count = 0;
 volatile int oled_sub_pointer = 0;
 #endif
-#if ENABLE_WIFI
-#include <ESP8266WiFi.h>
-// ESPAsyncTCP and ESPAsyncWebServer libraries by me-no-dev
-// download (green "Clone or download" button) and extract to Arduino libraries folder
-// Windows: "Documents\Arduino\libraries" or full path: "C:\Users\rama\Documents\Arduino\libraries"
-// https://github.com/me-no-dev/ESPAsyncTCP
-// https://github.com/me-no-dev/ESPAsyncWebServer
-#include <ESPAsyncTCP.h>
-#include <ESPAsyncWebServer.h>
-#endif
-#include "FS.h"
+// chip specific includes and helpers (wifi, async tcp / web server, mdns, file system): see platform.h
+// ESPAsyncTCP / AsyncTCP and ESPAsyncWebServer: maintained versions by ESP32Async (see platformio.ini)
+#include "platform.h"
 #if ENABLE_WIFI
 #include <DNSServer.h>
 #include <WiFiUdp.h>
-#include <ESP8266mDNS.h> // mDNS library for finding gbscontrol.local on the local network
 #include <ArduinoOTA.h>
 
 // PersWiFiManager library by Ryan Downing
@@ -149,9 +140,8 @@ PersWiFiManager persWM(server, dnsServer);
     digitalWrite(LED_BUILTIN, HIGH); \
     pinMode(LED_BUILTIN, INPUT)
 
-// fast ESP8266 digitalRead (21 cycles vs 77), *should* work with all possible input pins
-// but only "D7" and "D6" have been tested so far
-#define digitalRead(x) ((GPIO_REG_READ(GPIO_IN_ADDRESS) >> x) & 1)
+// fast register based digitalRead (see platform.h); defined here so library headers above keep the normal one
+#define digitalRead(x) GBS_FAST_DIGITAL_READ(x)
 
 struct MenuAttrs
 {
@@ -643,7 +633,7 @@ void setup()
     // millis() at this point: typically 65ms
     // start web services as early in boot as possible
 #if ENABLE_WIFI
-    WiFi.hostname(device_hostname_partial); // was _full
+    gbsWifiSetHostname(device_hostname_partial); // was _full
 #endif
 
     startWire();
@@ -656,14 +646,12 @@ void setup()
 #if ENABLE_WIFI
     if (rto->webServerEnabled) {
         rto->allowUpdatesOTA = false;       // need to initialize for handleWiFi()
-        WiFi.setSleepMode(WIFI_NONE_SLEEP); // low latency responses, less chance for missing packets
-        WiFi.setOutputPower(WIFI_OUTPUT_POWER);         // float: min 0.0f, max 20.5f
+        gbsWifiLowLatency(WIFI_OUTPUT_POWER); // low latency responses; float dBm: min 0.0f, max 20.5f
         startWebserver();
         rto->webServerStarted = true;
     } else {
         //WiFi.disconnect(); // deletes credentials
-        WiFi.mode(WIFI_OFF);
-        WiFi.forceSleepBegin();
+        gbsWifiOff();
     }
 #endif
 #ifdef HAVE_PINGER_LIBRARY
@@ -672,7 +660,7 @@ void setup()
 
     SerialM.println(F("\nstartup"));
     SerialM.print(F("reset reason: "));
-    SerialM.println(ESP.getResetInfo()); // e.g. after a crash or watchdog reset
+    SerialM.println(gbsResetReason()); // e.g. after a crash or watchdog reset
 
     loadDefaultUserOptions();
     //globalDelay = 0;
@@ -752,11 +740,11 @@ void setup()
     GBS::PLLAD_PDZ::write(0); // AD PLL off
 
     // file system (web page, custom presets, ect)
-    if (!SPIFFS.begin()) {
+    if (!GBS_FS.begin()) {
         SerialM.println(F("SPIFFS mount failed! ((1M SPIFFS) selected?)"));
     } else {
         // load user preferences file
-        File f = SPIFFS.open("/preferencesv2.txt", "r");
+        File f = GBS_FS.open("/preferencesv2.txt", "r");
         if (!f) {
             SerialM.println(F("no preferences file yet, create new"));
             loadDefaultUserOptions();

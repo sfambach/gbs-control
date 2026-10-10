@@ -179,11 +179,11 @@ void handleType2Command(char argument);
 
 // gbs_ui.ino
 #if !USE_NEW_OLED_MENU
-void ICACHE_RAM_ATTR isrRotaryEncoder();
+void GBS_IRAM_ATTR isrRotaryEncoder();
 #endif
 #if USE_NEW_OLED_MENU
-void ICACHE_RAM_ATTR isrRotaryEncoderRotateForNewMenu();
-void ICACHE_RAM_ATTR isrRotaryEncoderPushForNewMenu();
+void GBS_IRAM_ATTR isrRotaryEncoderRotateForNewMenu();
+void GBS_IRAM_ATTR isrRotaryEncoderPushForNewMenu();
 #endif
 #if HAVE_BUTTONS
 uint8_t readButtons(void);

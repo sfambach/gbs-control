@@ -2,10 +2,7 @@
 
 #define OSD_TIMEOUT 8000
 
-#if ENABLE_WIFI
-#include <ESP8266WiFi.h>
-#endif
-#include "FS.h"
+#include "platform.h" // wifi, file system, restart
 #include "OLEDMenuImplementation.h"
 #include "options.h"
 #include "tv5725.h"
@@ -147,7 +144,7 @@ bool presetSelectionMenuHandler(OLEDMenuManager *manager, OLEDMenuItem *item, OL
 bool presetsCreationMenuHandler(OLEDMenuManager *manager, OLEDMenuItem *item, OLEDMenuNav, bool)
 {
     SlotMetaArray slotsObject;
-    File slotsBinaryFileRead = SPIFFS.open(SLOTS_FILE, "r");
+    File slotsBinaryFileRead = GBS_FS.open(SLOTS_FILE, "r");
     manager->clearSubItems(item);
     int curNumSlot = 0;
     if (slotsBinaryFileRead) {
@@ -181,7 +178,7 @@ bool resetMenuHandler(OLEDMenuManager *manager, OLEDMenuItem *item, OLEDMenuNav,
         // not precise
         if (millis() - oledMenuFreezeStartTime >= oledMenuFreezeTimeoutInMS) {
             manager->unfreeze();
-            ESP.reset();
+            gbsRestart();
             return false;
         }
         return false;

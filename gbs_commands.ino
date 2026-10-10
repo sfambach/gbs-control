@@ -41,7 +41,7 @@ void handleType2Command(char argument)
             saveUserPrefs();
             Serial.println(F("options set to defaults, restarting"));
             delay(60);
-            ESP.reset(); // don't use restart(), messes up websocket reconnects
+            gbsRestart(); // don't use restart(), messes up websocket reconnects
             //
             break;
         case '2':
@@ -103,19 +103,18 @@ void handleType2Command(char argument)
 #endif
             Serial.println(F("restart"));
             delay(60);
-            ESP.reset(); // don't use restart(), messes up websocket reconnects
+            gbsRestart(); // don't use restart(), messes up websocket reconnects
             break;
         case 'e': // print files on spiffs
         {
-            Dir dir = SPIFFS.openDir("/");
-            while (dir.next()) {
-                SerialM.print(dir.fileName());
+            gbsForEachFile([](const String &name, size_t size) {
+                SerialM.print(name);
                 SerialM.print(" ");
-                SerialM.println(dir.fileSize());
+                SerialM.println(size);
                 delay(1); // wifi stack
-            }
+            });
             ////
-            File f = SPIFFS.open("/preferencesv2.txt", "r");
+            File f = GBS_FS.open("/preferencesv2.txt", "r");
             if (!f) {
                 SerialM.println(F("failed opening preferences file"));
             } else {
@@ -373,9 +372,9 @@ void handleType2Command(char argument)
             // restart to attempt wifi station mode connect
             delay(30);
             WiFi.mode(WIFI_STA);
-            WiFi.hostname(device_hostname_partial); // _full
+            gbsWifiSetHostname(device_hostname_partial); // _full
             delay(30);
-            ESP.reset();
+            gbsRestart();
 #endif
             break;
         case 'v': {

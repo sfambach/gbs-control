@@ -50,7 +50,7 @@ void initEmptySlots(SlotMetaArray &slots)
 
 void writeSlots(const SlotMetaArray &slots)
 {
-    File f = SPIFFS.open(SLOTS_FILE, "w");
+    File f = GBS_FS.open(SLOTS_FILE, "w");
     f.write((const byte *)&slots, sizeof(slots));
     f.close();
 }
@@ -58,7 +58,7 @@ void writeSlots(const SlotMetaArray &slots)
 // false if there is no slots file yet
 bool readSlots(SlotMetaArray &slots)
 {
-    File f = SPIFFS.open(SLOTS_FILE, "r");
+    File f = GBS_FS.open(SLOTS_FILE, "r");
     if (!f) {
         return false;
     }
@@ -79,7 +79,7 @@ void readOrCreateSlots(SlotMetaArray &slots)
 // create the slots file with empty slots if it doesn't exist yet
 void ensureSlotsFile()
 {
-    File f = SPIFFS.open(SLOTS_FILE, "r");
+    File f = GBS_FS.open(SLOTS_FILE, "r");
     if (f) {
         f.close();
         return;
@@ -97,7 +97,7 @@ const uint8_t *loadPresetFromSPIFFS(byte forVideoMode)
     Ascii8 slot = 0;
     File f;
 
-    f = SPIFFS.open("/preferencesv2.txt", "r");
+    f = GBS_FS.open("/preferencesv2.txt", "r");
     if (f) {
         SerialM.println(F("preferencesv2.txt opened"));
         uint8_t result[3];
@@ -122,7 +122,7 @@ const uint8_t *loadPresetFromSPIFFS(byte forVideoMode)
 
     String fileName = presetFileName(forVideoMode, slot);
     if (fileName.length()) {
-        f = SPIFFS.open(fileName, "r");
+        f = GBS_FS.open(fileName, "r");
     }
 
     if (!f) {
@@ -156,7 +156,7 @@ void savePresetToSPIFFS()
     Ascii8 slot = 0;
 
     // first figure out if the user has set a preferenced slot
-    f = SPIFFS.open("/preferencesv2.txt", "r");
+    f = GBS_FS.open("/preferencesv2.txt", "r");
     if (f) {
         uint8_t result[3];
         result[0] = f.read(); // todo: move file cursor manually
@@ -176,7 +176,7 @@ void savePresetToSPIFFS()
 
     String fileName = presetFileName(rto->videoStandardInput, slot);
     if (fileName.length()) {
-        f = SPIFFS.open(fileName, "w");
+        f = GBS_FS.open(fileName, "w");
     }
 
     if (!f) {
@@ -253,7 +253,7 @@ void savePresetToSPIFFS()
 
 void saveUserPrefs()
 {
-    File f = SPIFFS.open("/preferencesv2.txt", "w");
+    File f = GBS_FS.open("/preferencesv2.txt", "w");
     if (!f) {
         SerialM.println(F("saveUserPrefs: open file failed"));
         return;

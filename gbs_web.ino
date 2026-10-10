@@ -260,7 +260,7 @@ void startWebserver()
     server.on("/bin/slots.bin", HTTP_GET, [](AsyncWebServerRequest *request) {
         if (ESP.getFreeHeap() > 10000) {
             ensureSlotsFile();
-            request->send(SPIFFS, SLOTS_FILE, "application/octet-stream");
+            request->send(GBS_FS, SLOTS_FILE, "application/octet-stream");
         }
     });
 
@@ -357,7 +357,7 @@ void startWebserver()
 
                 // remove preset files
                 for (size_t i = 0; i < PRESET_FILE_COUNT; i++) {
-                    SPIFFS.remove(presetFileNameAt(i, slot));
+                    GBS_FS.remove(presetFileNameAt(i, slot));
                 }
 
                 uint8_t loopCount = 0;
@@ -369,7 +369,7 @@ void startWebserver()
                     nextSlot = slotIndexMap[currentSlot + loopCount + 1];
                     flag = 0;
                     for (size_t i = 0; i < PRESET_FILE_COUNT; i++) {
-                        flag += SPIFFS.rename(presetFileNameAt(i, nextSlot), presetFileNameAt(i, slot));
+                        flag += GBS_FS.rename(presetFileNameAt(i, nextSlot), presetFileNameAt(i, slot));
                     }
 
                     slotsObject.slot[currentSlot + loopCount].slot = slotsObject.slot[currentSlot + loopCount + 1].slot;
@@ -402,7 +402,7 @@ void startWebserver()
         [](AsyncWebServerRequest *request) { request->send(200, "application/json", "true"); },
         [](AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final) {
             if (!index) {
-                request->_tempFile = SPIFFS.open("/" + filename, "w");
+                request->_tempFile = GBS_FS.open("/" + filename, "w");
             }
             if (len) {
                 request->_tempFile.write(data, len);
@@ -416,7 +416,7 @@ void startWebserver()
         if (ESP.getFreeHeap() > 10000) {
             int params = request->params();
             if (params > 0) {
-                request->send(SPIFFS, request->getParam(0)->value(), String(), true);
+                request->send(GBS_FS, request->getParam(0)->value(), String(), true);
             } else {
                 request->send(200, "application/json", "false");
             }
@@ -427,15 +427,14 @@ void startWebserver()
 
     server.on("/spiffs/dir", HTTP_GET, [](AsyncWebServerRequest *request) {
         if (ESP.getFreeHeap() > 10000) {
-            Dir dir = SPIFFS.openDir("/");
             String output = "[";
 
-            while (dir.next()) {
+            gbsForEachFile([&output](const String &name, size_t) {
                 output += "\"";
-                output += dir.fileName();
+                output += name;
                 output += "\",";
                 delay(1); // wifi stack
-            }
+            });
 
             output += "]";
 
@@ -448,7 +447,7 @@ void startWebserver()
     });
 
     server.on("/spiffs/format", HTTP_GET, [](AsyncWebServerRequest *request) {
-        request->send(200, "application/json", SPIFFS.format() ? "true" : "false");
+        request->send(200, "application/json", GBS_FS.format() ? "true" : "false");
     });
 
     startApi(); // JSON interface, see gbs_api.ino
@@ -564,8 +563,8 @@ void initUpdateOTA()
         else // U_SPIFFS
             type = "filesystem";
 
-        // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
-        SPIFFS.end();
+        // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using GBS_FS.end()
+        GBS_FS.end();
         SerialM.println("Start updating " + type);
     });
     ArduinoOTA.onEnd([]() {

@@ -10,9 +10,7 @@
 #ifndef PERSWIFIMANAGER_H
 #define PERSWIFIMANAGER_H
 
-#include <ESP8266WiFi.h>
-#include <ESPAsyncTCP.h>
-#include <ESPAsyncWebServer.h>
+#include "platform.h" // wifi, async tcp, web server
 #include <DNSServer.h>
 
 // WIFI_CONNECT_TIMEOUT, WIFI_AP_RETRY_INTERVAL, WIFI_AP_RETRY_DURATION: see config.h
