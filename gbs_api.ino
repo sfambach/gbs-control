@@ -110,7 +110,7 @@ static void apiStatus(AsyncWebServerRequest *request)
     j += ",\"deinterlacer\":\"";
     j += uopt->deintMode ? "bob" : "motionAdaptive";
     j += "\"},\"wifi\":{";
-    if (WiFi.getMode() == WIFI_AP) {
+    if ((WiFi.getMode() & WIFI_AP) && WiFi.status() != WL_CONNECTED) {
         j += "\"mode\":\"ap\"";
     } else {
         j += "\"mode\":\"sta\",\"ssid\":\"" + WiFi.SSID() + "\",\"bssid\":\"" + WiFi.BSSIDstr() +

@@ -64,16 +64,14 @@ void PersWiFiManager::handleApRetry()
         } else if ((millis() - _apRetryTime) > (1000UL * WIFI_AP_RETRY_DURATION)) {
             _apRetrying = false;
             _apRetryTime = millis();
-            WiFi.disconnect(false); // stop trying, keep stored credentials
-            WiFi.mode(WIFI_AP);
+            WiFi.disconnect(false); // stop trying, keep stored credentials (AP keeps running)
         }
     } else if ((millis() - _apRetryTime) > (1000UL * WIFI_AP_RETRY_INTERVAL)) {
         _apRetryTime = millis();
-        // don't disturb someone who is using the AP (scanning switches channels)
+        // don't disturb someone who is using the AP (connecting switches the channel)
         if (WiFi.softAPgetStationNum() == 0) {
             _apRetrying = true;
-            WiFi.mode(WIFI_AP_STA);
-            WiFi.begin();
+            WiFi.begin(); // already in AP + STA mode, see startApMode()
         }
     }
 }
@@ -110,7 +108,9 @@ void PersWiFiManager::startApMode()
 {
     //start AP mode
     IPAddress apIP(192, 168, 4, 1);
-    WiFi.mode(WIFI_AP);
+    // AP + STA in parallel: scanning works right away (ESP32 needs STA for it) and the reconnect
+    // retry for a stored network runs without tearing the access point down
+    WiFi.mode(WIFI_AP_STA);
     WiFi.softAPConfig(apIP, apIP, IPAddress(255, 255, 255, 0));
     _apPass.length() ? WiFi.softAP(getApSsid().c_str(), _apPass.c_str(), 11) : WiFi.softAP(getApSsid().c_str());
 
@@ -139,12 +139,17 @@ void PersWiFiManager::setupWiFiHandlers()
     // note: removed DNS server setup here
 
     _server->on("/wifi/list", HTTP_GET, [](AsyncWebServerRequest *request) {
-        //scan for wifi networks
+        // scan for wifi networks; the client polls until the result is there:
+        // 202 = scan started or still running, 200 = result (one network per line, may be empty)
         int n = WiFi.scanComplete();
         String s = "";
-        if (n == -2) {
-            WiFi.scanNetworks(true);
-        } else if (n > 0) { // fix: -1 = scan still running (was used as array size)
+        if (n < 0) {
+            if (n != -1) {               // -2: no scan yet / failed (-1: still running)
+                WiFi.scanNetworks(true); // async
+            }
+            request->send(202, "text/plain", "");
+            return;
+        } else if (n > 0) {
             //build array of indices
             int ix[n];
             for (int i = 0; i < n; i++)
@@ -171,6 +176,8 @@ void PersWiFiManager::setupWiFiHandlers()
             }
             // don't cache found ssid's
             WiFi.scanDelete();
+        } else {
+            WiFi.scanDelete(); // nothing found: allow a new scan on the next request
         }
         //send string to client
         request->send(200, "text/plain", s);

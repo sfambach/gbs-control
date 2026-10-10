@@ -456,8 +456,9 @@ void startWebserver()
     startApi(); // JSON interface, see gbs_api.ino
 
     server.on("/wifi/status", HTTP_GET, [](AsyncWebServerRequest *request) {
-        WiFiMode_t wifiMode = WiFi.getMode();
-        if (wifiMode == WIFI_AP) {
+        // access point mode as long as there is no station connection (scanning or the reconnect
+        // retry switch to AP + STA, especially on ESP32, that must not look like "connected")
+        if ((WiFi.getMode() & WIFI_AP) && WiFi.status() != WL_CONNECTED) {
             request->send(200, "application/json", "{\"mode\":\"ap\"}");
             return;
         }

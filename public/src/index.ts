@@ -978,48 +978,53 @@ const wifiConnect = () => {
 const wifiScanSSID = () => {
   GBSControl.ui.wifiStaButton.setAttribute("disabled", "");
   GBSControl.ui.wifiListTable.innerHTML = "";
-
-  if (!GBSControl.scanSSIDDone) {
-    fetch(`/wifi/list?${+new Date()}`).then(() => {
-      GBSControl.scanSSIDDone = true;
-      setTimeout(wifiScanSSID, 3000);
-    });
-    return;
-  }
-
-  fetch(`/wifi/list?${+new Date()}`)
-    .then((e) => e.text())
-    .then((result) => {
-      GBSControl.scanSSIDDone = false;
-      return result.length
-        ? result
-            .split("\n")
-            .map((line) => line.split(","))
-            .map(([strength, encripted, ssid]) => {
-              return { strength, encripted, ssid };
-            })
-        : [];
-    })
-    .then((ssids) => {
-      return ssids.reduce((acc, ssid) => {
-        return `${acc}<tr gbs-ssid="${ssid.ssid}">
-        <td class="gbs-icon" style="opacity:${
-          parseInt(ssid.strength, 10) / 100
-        }">wifi</td>
+  // the firmware answers 202 while the scan is running and 200 with the result
+  let polls = 0;
+  const done = (html: string) => {
+    GBSControl.ui.wifiStaButton.removeAttribute("disabled");
+    if (html.length) {
+      GBSControl.ui.wifiListTable.innerHTML = html;
+      GBSControl.ui.wifiList.removeAttribute("hidden");
+      GBSControl.ui.wifiConnect.setAttribute("hidden", "");
+    }
+  };
+  const poll = (): Promise<void> =>
+    fetch(`/wifi/list?${+new Date()}`)
+      .then((response) => {
+        if (response.status === 202) {
+          // only a safety net if the device stops answering, not a guess how long a scan takes
+          if (++polls < 60) {
+            setTimeout(poll, 500);
+          } else {
+            done("");
+          }
+          return null;
+        }
+        return response.text();
+      })
+      .then((result) => {
+        if (result === null) {
+          return;
+        }
+        const ssids = result.length
+          ? result
+              .split("\n")
+              .map((line) => line.split(","))
+              .map(([strength, encripted, ssid]) => ({ strength, encripted, ssid }))
+          : [];
+        done(
+          ssids.reduce(
+            (acc, ssid) => `${acc}<tr gbs-ssid="${ssid.ssid}">
+        <td class="gbs-icon" style="opacity:${parseInt(ssid.strength, 10) / 100}">wifi</td>
         <td>${ssid.ssid}</td>
         <td class="gbs-icon">${ssid.encripted ? "lock" : "lock_open"}</td>
-      </tr>`;
-      }, "");
-    })
-    .then((html) => {
-      GBSControl.ui.wifiStaButton.removeAttribute("disabled");
-
-      if (html.length) {
-        GBSControl.ui.wifiListTable.innerHTML = html;
-        GBSControl.ui.wifiList.removeAttribute("hidden");
-        GBSControl.ui.wifiConnect.setAttribute("hidden", "");
-      }
-    });
+      </tr>`,
+            ""
+          )
+        );
+      })
+      .catch(() => done(""));
+  poll();
 };
 
 const wifiSelectSSID = (event: Event) => {
