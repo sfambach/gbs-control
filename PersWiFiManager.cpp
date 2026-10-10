@@ -144,7 +144,7 @@ void PersWiFiManager::setupWiFiHandlers()
         String s = "";
         if (n == -2) {
             WiFi.scanNetworks(true);
-        } else if (n) {
+        } else if (n > 0) { // fix: -1 = scan still running (was used as array size)
             //build array of indices
             int ix[n];
             for (int i = 0; i < n; i++)
