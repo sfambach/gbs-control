@@ -240,6 +240,9 @@ void startWebserver()
             request->beginResponse(200, "application/json", "true");
         request->send(response);
 
+        // core 3.x: persistent is off by default (2.x: on), without it the new network is not
+        // stored in flash and the device reconnects to the old one after the restart below
+        WiFi.persistent(true);
         if (request->arg("n").length()) {     // n holds ssid
             if (request->arg("p").length()) { // p holds password
                 // false = only save credentials, don't connect
