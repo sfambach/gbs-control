@@ -450,7 +450,14 @@ void startWebserver()
 
     server.on("/wifi/status", HTTP_GET, [](AsyncWebServerRequest *request) {
         WiFiMode_t wifiMode = WiFi.getMode();
-        request->send(200, "application/json", wifiMode == WIFI_AP ? "{\"mode\":\"ap\"}" : "{\"mode\":\"sta\",\"ssid\":\"" + WiFi.SSID() + "\"}");
+        if (wifiMode == WIFI_AP) {
+            request->send(200, "application/json", "{\"mode\":\"ap\"}");
+            return;
+        }
+        // bssid / channel / rssi: which access point the device is connected to (wifi diagnostics)
+        request->send(200, "application/json", "{\"mode\":\"sta\",\"ssid\":\"" + WiFi.SSID() +
+            "\",\"bssid\":\"" + WiFi.BSSIDstr() + "\",\"channel\":" + String(WiFi.channel()) +
+            ",\"rssi\":" + String(WiFi.RSSI()) + "}");
     });
 
     server.on("/gbs/restore-filters", HTTP_GET, [](AsyncWebServerRequest *request) {
