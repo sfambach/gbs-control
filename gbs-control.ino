@@ -209,6 +209,18 @@ static void queueWebCommand(char type, char cmd)
     webCmdHead = next;
 }
 
+// number of identical commands still waiting in the queue (used by /api/set for toggles)
+static uint8_t countQueuedWebCommand(char type, char cmd)
+{
+    uint8_t n = 0;
+    for (uint8_t i = webCmdTail; i != webCmdHead; i = (i + 1) % WEB_CMD_QUEUE_LEN) {
+        if (webCmdQueue[i].type == type && webCmdQueue[i].cmd == cmd) {
+            n++;
+        }
+    }
+    return n;
+}
+
 // hand the next queued command to loop(), only when no other command is pending
 static void dequeueWebCommand()
 {

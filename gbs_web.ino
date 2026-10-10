@@ -451,6 +451,8 @@ void startWebserver()
         request->send(200, "application/json", SPIFFS.format() ? "true" : "false");
     });
 
+    startApi(); // JSON interface, see gbs_api.ino
+
     server.on("/wifi/status", HTTP_GET, [](AsyncWebServerRequest *request) {
         WiFiMode_t wifiMode = WiFi.getMode();
         if (wifiMode == WIFI_AP) {

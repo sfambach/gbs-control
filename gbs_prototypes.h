@@ -154,6 +154,11 @@ void enableMotionAdaptDeinterlace();
 void disableMotionAdaptDeinterlace();
 void printInfo();
 
+// gbs_api.ino
+#if ENABLE_WIFI
+void startApi();
+#endif
+
 // gbs_web.ino
 void updateWebSocketData();
 void handleWiFi(boolean instant);
