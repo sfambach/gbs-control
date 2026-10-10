@@ -37,6 +37,7 @@ namespace MeasurePeriod {
 #endif
     static constexpr uint32_t firstEdgeTimeoutUs = FIRST_EDGE_TIMEOUT_US;
 
+#if GBS_ISR_CAN_REATTACH
     void _risingEdgeISR_prepare();
     void _risingEdgeISR_measure();
 
@@ -66,6 +67,34 @@ namespace MeasurePeriod {
         detachInterrupt(DEBUG_IN_PIN);
         interrupts();
     }
+#else
+    // one ISR with a state machine (attach/detachInterrupt must not be called from an ISR here):
+    // 1st rising edge = start, 2nd rising edge = stop; detached by GBS_MEASURE_END()
+    volatile uint8_t edge;
+    void _risingEdgeISR();
+
+    void start() {
+        startTime = 0;
+        stopTime = 0;
+        armed = 0;
+        edge = 0;
+        attachInterrupt(DEBUG_IN_PIN, _risingEdgeISR, RISING);
+    }
+
+    void GBS_IRAM_ATTR _risingEdgeISR()
+    {
+        uint32_t now;
+        gbsCycleCount(now);
+        if (edge == 0) {
+            startTime = now;
+            armed = 1;
+            edge = 1;
+        } else if (edge == 1) {
+            stopTime = now;
+            edge = 2;
+        }
+    }
+#endif
 }
 
 void setExternalClockGenFrequencySmooth(uint32_t freq) {

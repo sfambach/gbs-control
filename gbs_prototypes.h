@@ -48,7 +48,7 @@ void writeSlots(const SlotMetaArray &slots);
 bool readSlots(SlotMetaArray &slots);
 void readOrCreateSlots(SlotMetaArray &slots);
 void ensureSlotsFile();
-#if defined(ESP8266)
+#if defined(ESP8266) || defined(ESP32)
 const uint8_t *loadPresetFromSPIFFS(byte forVideoMode);
 void savePresetToSPIFFS();
 void saveUserPrefs();
@@ -162,7 +162,7 @@ void startApi();
 // gbs_web.ino
 void updateWebSocketData();
 void handleWiFi(boolean instant);
-#if defined(ESP8266)
+#if defined(ESP8266) || defined(ESP32)
 #if ENABLE_WIFI
 void startWebserver();
 void initUpdateOTA();
@@ -173,7 +173,7 @@ void initUpdateOTA();
 void handleSerialCommand();
 void discardSerialRxData();
 void myLog(char const* type, char command);
-#if defined(ESP8266)
+#if defined(ESP8266) || defined(ESP32)
 void handleType2Command(char argument);
 #endif
 
@@ -191,7 +191,7 @@ void debounceButtons(void);
 bool buttonDown(uint8_t pos);
 void handleButtons(void);
 #endif
-#if defined(ESP8266)
+#if defined(ESP8266) || defined(ESP32)
 void StrClear(char *str, uint16_t length);
 #endif
 #if !USE_NEW_OLED_MENU

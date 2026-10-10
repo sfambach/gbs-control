@@ -89,7 +89,7 @@ void ensureSlotsFile()
     writeSlots(slots);
 }
 
-#if defined(ESP8266)
+#if defined(ESP8266) || defined(ESP32)
 const uint8_t *loadPresetFromSPIFFS(byte forVideoMode)
 {
     static uint8_t preset[432];

@@ -1510,7 +1510,7 @@ void applyPresets(uint8_t result)
         } else if (uopt->presetPreference == 3) {
             writeProgramArrayNew(ntsc_1280x720, false);
         }
-#if defined(ESP8266)
+#if defined(ESP8266) || defined(ESP32)
         else if (uopt->presetPreference == OutputCustomized) {
             const uint8_t *preset = loadPresetFromSPIFFS(result);
             writeProgramArrayNew(preset, false);
@@ -1545,7 +1545,7 @@ void applyPresets(uint8_t result)
         } else if (uopt->presetPreference == 3) {
             writeProgramArrayNew(pal_1280x720, false);
         }
-#if defined(ESP8266)
+#if defined(ESP8266) || defined(ESP32)
         else if (uopt->presetPreference == OutputCustomized) {
             const uint8_t *preset = loadPresetFromSPIFFS(result);
             writeProgramArrayNew(preset, false);

@@ -120,7 +120,7 @@ void handleButtons(void)
 
 #endif
 
-#if defined(ESP8266)
+#if defined(ESP8266) || defined(ESP32)
 // sets every element of str to 0 (clears array)
 void StrClear(char *str, uint16_t length)
 {

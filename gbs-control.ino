@@ -228,7 +228,7 @@ static void dequeueWebCommand()
 #endif
 //uint8_t globalDelay; // used for dev / debug
 
-#if defined(ESP8266) && ENABLE_WIFI
+#if (defined(ESP8266) || defined(ESP32)) && ENABLE_WIFI
 // serial mirror class for websocket logs
 // Output for the web ui is collected in a small buffer and sent as one websocket frame
 // from handleWiFi() (or when the buffer is full), instead of one frame per print() call.
@@ -740,7 +740,7 @@ void setup()
     GBS::PLLAD_PDZ::write(0); // AD PLL off
 
     // file system (web page, custom presets, ect)
-    if (!GBS_FS.begin()) {
+    if (!gbsFsBegin()) {
         SerialM.println(F("SPIFFS mount failed! ((1M SPIFFS) selected?)"));
     } else {
         // load user preferences file
@@ -847,7 +847,7 @@ void setup()
 #if ENABLE_WIFI
     if (WiFi.status() == WL_CONNECTED) {
         // nothing
-    } else if (WiFi.SSID().length() == 0) {
+    } else if (gbsWifiStoredSsid().length() == 0) {
         SerialM.println(FPSTR(ap_info_string));
     } else {
         SerialM.println(F("(WiFi): still connecting.."));
@@ -1430,7 +1430,7 @@ void loop()
 #endif
 }
 
-#if defined(ESP8266)
+#if defined(ESP8266) || defined(ESP32)
 #if ENABLE_WIFI
 #include "webui_html.h"
 // gzip -c9 webui.html > webui_html && xxd -i webui_html > webui_html.h && rm webui_html && sed -i -e 's/unsigned char webui_html\[]/const uint8_t webui_html[] PROGMEM/' webui_html.h && sed -i -e 's/unsigned int webui_html_len/const unsigned int webui_html_len/' webui_html.h
@@ -1454,10 +1454,6 @@ void loop()
 //  }
 //}
 
-#if ENABLE_WIFI
-WiFiEventHandler disconnectedEventHandler;
-
-#endif
 
 #endif
 

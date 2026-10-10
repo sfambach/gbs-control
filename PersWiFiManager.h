@@ -6,7 +6,7 @@
    see /3rdparty/PersWiFiManager/ for original code and license
 */
 #include "config.h"
-#if defined(ESP8266) && ENABLE_WIFI
+#if (defined(ESP8266) || defined(ESP32)) && ENABLE_WIFI
 #ifndef PERSWIFIMANAGER_H
 #define PERSWIFIMANAGER_H
 

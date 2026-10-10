@@ -118,7 +118,10 @@ void handleWiFi(boolean instant)
     static unsigned long lastTimePing = millis();
     static bool pingSent = false;
     if (rto->webServerEnabled && rto->webServerStarted) {
-        MDNS.update();
+        gbsMdnsUpdate();
+#if GBS_WEBSOCKET_NEEDS_LOOP
+        webSocket.loop();
+#endif
         persWM.handleWiFi(); // if connected, returns instantly. otherwise it reconnects or opens AP
         dnsServer.processNextRequest();
         // buffered log output for the web ui terminal; right away after a command
@@ -151,7 +154,7 @@ void handleWiFi(boolean instant)
 
 #endif
 
-#if defined(ESP8266)
+#if defined(ESP8266) || defined(ESP32)
 #if ENABLE_WIFI
 void startWebserver()
 {
@@ -159,10 +162,10 @@ void startWebserver()
     persWM.onConnect([]() {
         SerialM.print(F("(WiFi): STA mode connected; IP: "));
         SerialM.println(WiFi.localIP().toString());
-        if (MDNS.begin(device_hostname_partial, WiFi.localIP())) { // MDNS request for gbscontrol.local
+        if (gbsMdnsBegin(device_hostname_partial)) { // MDNS request for gbscontrol.local
             //Serial.println("MDNS started");
             MDNS.addService("http", "tcp", 80); // Add service to MDNS-SD
-            MDNS.announce();
+            gbsMdnsAnnounce();
         }
         SerialM.println(FPSTR(st_info_string));
     });
@@ -171,9 +174,9 @@ void startWebserver()
         // add mdns announce here as well?
     });
 
-    disconnectedEventHandler = WiFi.onStationModeDisconnected([](const WiFiEventStationModeDisconnected &event) {
+    gbsWifiOnDisconnected([](int reason) {
         Serial.print("Station disconnected, reason: ");
-        Serial.println(event.reason);
+        Serial.println(reason);
     });
 
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
@@ -506,7 +509,7 @@ void startWebserver()
     });
 
     persWM.setConnectNonBlock(true);
-    if (WiFi.SSID().length() == 0) {
+    if (gbsWifiStoredSsid().length() == 0) {
         // no stored network to connect to > start AP mode right away
         persWM.setupWiFiHandlers();
         persWM.startApMode();

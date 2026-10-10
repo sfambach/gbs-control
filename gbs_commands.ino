@@ -16,7 +16,7 @@ void myLog(char const* type, char command) {
         type, command, uopt->presetPreference, uopt->presetSlot, rto->presetID);
 }
 
-#if defined(ESP8266)
+#if defined(ESP8266) || defined(ESP32)
 void handleType2Command(char argument)
 {
     myLog("user", argument);

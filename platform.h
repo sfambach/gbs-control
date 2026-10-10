@@ -14,7 +14,11 @@
 //   GBS_MEASURE_BEGIN() / _ARMED() / _END() hooks around a vsync measurement
 //   gbsRestart(), gbsResetReason()
 //   gbsWifiSetHostname(), gbsWifiOff(), gbsWifiLowLatency(dBm)
-//   gbsForEachFile(callback(name, size))
+//   gbsForEachFile(callback(name, size)), gbsFsBegin()
+//   GBS_ISR_CAN_REATTACH                    1: attach/detachInterrupt allowed inside an ISR
+//   gbsWifiStoredSsid(), gbsMdnsBegin(name), gbsMdnsUpdate(), gbsMdnsAnnounce(), GBS_WIFI_ENC_OPEN
+//   GBS_WEBSOCKET_NEEDS_LOOP
+//   gbsWifiOnDisconnected(callback(int reason))
 
 #include "config.h"
 

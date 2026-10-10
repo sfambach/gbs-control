@@ -17,6 +17,7 @@
 #define GBS_IRAM_ATTR ICACHE_RAM_ATTR
 
 #define GBS_FS SPIFFS
+#define gbsFsBegin() SPIFFS.begin()
 
 // fast ESP8266 digitalRead (21 cycles vs 77), *should* work with all possible input pins
 // but only "D7" and "D6" have been tested so far
@@ -38,7 +39,29 @@
 #define gbsRestart() ESP.reset()
 #define gbsResetReason() ESP.getResetInfo()
 
+// attachInterrupt() / detachInterrupt() may be called from an ISR (used by framesync.h)
+#define GBS_ISR_CAN_REATTACH 1
+
 #define gbsWifiSetHostname(name) WiFi.hostname(name)
+#define gbsWifiStoredSsid() WiFi.SSID()
+#define gbsMdnsUpdate() MDNS.update()
+#define gbsMdnsBegin(name) MDNS.begin(name, WiFi.localIP())
+#define gbsMdnsAnnounce() MDNS.announce()
+#define GBS_WIFI_ENC_OPEN ENC_TYPE_NONE
+
+// called with the disconnect reason code
+inline void gbsWifiOnDisconnected(void (*callback)(int reason))
+{
+    static void (*disconnectedCallback)(int) = nullptr;
+    static WiFiEventHandler handler;
+    disconnectedCallback = callback;
+    handler = WiFi.onStationModeDisconnected([](const WiFiEventStationModeDisconnected &event) {
+        if (disconnectedCallback) {
+            disconnectedCallback(event.reason);
+        }
+    });
+}
+#define GBS_WEBSOCKET_NEEDS_LOOP 0
 #define gbsWifiOff()            \
     do {                        \
         WiFi.mode(WIFI_OFF);    \

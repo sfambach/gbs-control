@@ -6,7 +6,7 @@
    see /3rdparty/PersWiFiManager/ for original code and license
 */
 #include "config.h"
-#if defined(ESP8266) && ENABLE_WIFI
+#if (defined(ESP8266) || defined(ESP32)) && ENABLE_WIFI
 #include "PersWiFiManager.h"
 
 // #define WIFI_HTM_PROGMEM
@@ -99,7 +99,7 @@ void PersWiFiManager::handleWiFi()
     if ((WiFi.status() == WL_CONNECT_FAILED) || ((WiFi.status() != WL_CONNECTED) && ((millis() - _connectStartTime) > (1000 * WIFI_CONNECT_TIMEOUT)))) {
         startApMode();
         _connectStartTime = 0; //reset connect start time
-        if (WiFi.SSID().length()) {
+        if (gbsWifiStoredSsid().length()) {
             _apRetryTime = millis(); // stored network exists: keep retrying it in the background
         }
     }
@@ -166,7 +166,7 @@ void PersWiFiManager::setupWiFiHandlers()
             //format [signal%]:[encrypted 0 or 1]:SSID
             for (int i = 0; i < n && s.length() < 2000; i++) { //check s.length to limit memory usage
                 if (ix[i] != -1) {
-                    s += String(i ? "\n" : "") + ((constrain(WiFi.RSSI(ix[i]), -100, -50) + 100) * 2) + "," + ((WiFi.encryptionType(ix[i]) == ENC_TYPE_NONE) ? 0 : 1) + "," + WiFi.SSID(ix[i]);
+                    s += String(i ? "\n" : "") + ((constrain(WiFi.RSSI(ix[i]), -100, -50) + 100) * 2) + "," + ((WiFi.encryptionType(ix[i]) == GBS_WIFI_ENC_OPEN) ? 0 : 1) + "," + WiFi.SSID(ix[i]);
                 }
             }
             // don't cache found ssid's

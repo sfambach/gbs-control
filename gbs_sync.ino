@@ -1850,7 +1850,7 @@ void runSyncWatcher()
             boolean needPostAdjust = 0;
             static uint16_t activePresetLineCount = 0;
             // is the source in range for scaling RGBHV and is it currently in mode 15?
-            uint16 sourceLines = GBS::STATUS_SYNC_PROC_VTOTAL::read(); // if sourceLines = 0, might be in some reset state
+            uint16_t sourceLines = GBS::STATUS_SYNC_PROC_VTOTAL::read(); // if sourceLines = 0, might be in some reset state
             if ((sourceLines <= 535 && sourceLines != 0) && rto->videoStandardInput == 15) {
                 uint16_t firstDetectedSourceLines = sourceLines;
                 boolean moveOn = 1;
