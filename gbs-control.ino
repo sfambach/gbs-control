@@ -659,6 +659,8 @@ void setup()
 #endif
 
     SerialM.println(F("\nstartup"));
+    SerialM.print(F("reset reason: "));
+    SerialM.println(ESP.getResetInfo()); // e.g. after a crash or watchdog reset
 
     loadDefaultUserOptions();
     //globalDelay = 0;
@@ -2064,8 +2066,12 @@ void loop()
     }
 
     // update clamp + coast positions after preset change // do it quickly
+    // retry at most every 100 ms: updateCoastPosition() takes ~3 ms and can fail on every try
+    // (seen with RGBHV upscaling, HPERIOD_IF too small), which blocked loop() and wifi
+    static unsigned long lastCoastTry = 0;
     if ((rto->videoStandardInput <= 14 && rto->videoStandardInput != 0) &&
-        rto->syncWatcherEnabled && !rto->coastPositionIsSet) {
+        rto->syncWatcherEnabled && !rto->coastPositionIsSet && (millis() - lastCoastTry) >= 100) {
+        lastCoastTry = millis();
         if (rto->continousStableCounter >= 7) {
             if ((getStatus16SpHsStable() == 1) && (getVideoMode() == rto->videoStandardInput)) {
                 updateCoastPosition(0);
